@@ -1,0 +1,12 @@
+
+build/bootblock:     file format elf64-littleriscv
+
+
+Disassembly of section .text:
+
+0000000050200000 <_ftext>:
+    50200000:	0ff0000f          	fence
+
+0000000050200004 <stop>:
+    50200004:	a001                	j	50200004 <stop>
+    50200006:	0001                	nop

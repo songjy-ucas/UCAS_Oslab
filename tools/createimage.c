@@ -91,28 +91,30 @@ static void create_image(int nfiles, char *files[])
     assert(img != NULL);
 
     /* for each input file */
-    for (int fidx = 0; fidx < nfiles; ++fidx) {
+    for (int fidx = 0; fidx < nfiles; ++fidx) { // 遍历提供的所有输入文件
 
         int taskidx = fidx - 2;
 
         /* open input file */
-        fp = fopen(*files, "r");
+        fp = fopen(*files, "r"); // 按文件名打开文件
         assert(fp != NULL);
 
         /* read ELF header */
-        read_ehdr(&ehdr, fp);
+        read_ehdr(&ehdr, fp); // 读取 ELF 头
         printf("0x%04lx: %s\n", ehdr.e_entry, *files);
 
         /* for each program header */
-        for (int ph = 0; ph < ehdr.e_phnum; ph++) {
+        for (int ph = 0; ph < ehdr.e_phnum; ph++) { // 遍历所有程序头
 
             /* read program header */
             read_phdr(&phdr, fp, ph, ehdr);
 
-            if (phdr.p_type != PT_LOAD) continue;
+            if (phdr.p_type != PT_LOAD) continue; // 只关心 PT_LOAD 段，其他类型的段（如调试信息）忽略
 
             /* write segment to the image */
-            write_segment(phdr, fp, img, &phyaddr);
+            write_segment(phdr, fp, img, &phyaddr); 
+            //当前程序头描述的那个段（比如 .text 代码段或 .data 数据段）从输入文件 fp 中读出来，
+            //然后写入到我们的输出镜像 img 中。phyaddr 变量跟踪着我们在 img 文件中已经写入了多少字节。
 
             /* update nbytes_kernel */
             if (strcmp(*files, "main") == 0) {
@@ -129,6 +131,8 @@ static void create_image(int nfiles, char *files[])
          */
         if (strcmp(*files, "bootblock") == 0) {
             write_padding(img, &phyaddr, SECTOR_SIZE);
+            //这个函数的作用就是，如果 bootblock 的代码和数据不到512字节，就用0填充剩下的部分，
+            //凑足一个扇区。这保证了内核（main）的内容能准确地从第二个扇区开始。
         }
 
         fclose(fp);

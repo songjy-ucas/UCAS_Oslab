@@ -82,7 +82,12 @@ int main(void)
     // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
     while (1)
     {
-        asm volatile("wfi");
+     //   asm volatile("wfi"); // Wait For Interrupt，CPU 会一直保持睡眠，直到有一个外部中断
+      int c;
+      while ((c = bios_getchar()) == -1) {
+          // an empty loop body
+      }
+      bios_putchar((char)c); // echo back
     }
 
     return 0;

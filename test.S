@@ -1,34 +1,34 @@
-
-.equ RESULT_ADDR, 0x1000
+#sum 1 to 50
 
 .data
-.global result_storage
-result_storage:
-    .word 0
+result: .word 0
 
 .text
-.global main
-main:
+.global _start   #程序入口为_start 
 
-    addi sp, sp, -4
-    sw ra, 0(sp)
-
-    li t0, 1
-    li t1, 0
-    li t2, 50
+_start:
+	#initialize
+	li t0, 1   #set i = 1
+	li t1, 50  #loop 50 times
+	li t2, 0   #set sum =0
 
 loop:
-    add t1, t1, t0
-    addi t0, t0, 1
-    ble t0, t2, loop
+	bgt t0, t1, end	
+	
+	add t2, t2, t0	#sum = sum + i
 
-    la t3, RESULT_ADDR
-    sw t1, 0(t3)
+	add t0, t0, 1	
+	
+	j loop 	
+end: 
+	la t3, result 	#load the address of result to t3
+	sw t2, 0(t3)	#store the data(t2) to the address(t3)
 
-    lw ra, 0(sp)
-    addi sp, sp, 4
-    
-    ret
+exit:
+  	li a0, 0	
+	li a7, 93
+
+	ecall
 
 // TODO: [p0-task1] Add your code here!
 

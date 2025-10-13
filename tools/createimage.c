@@ -11,9 +11,14 @@
 
 #define SECTOR_SIZE 512
 #define BOOT_LOADER_SIG_OFFSET 0x1fe
-#define OS_SIZE_LOC (BOOT_LOADER_SIG_OFFSET - 2)
+#define OS_SIZE_LOC (BOOT_LOADER_SIG_OFFSET - 2) // OS 大小信息
+#define TASK_NUM_LOC (BOOT_LOADER_SIG_OFFSET - 4) // 用户程序数量
+#define TASK_INFO_START_LOC (BOOT_LOADER_SIG_OFFSET - 6) // task_info数组的起始扇区
 #define BOOT_LOADER_SIG_1 0x55
 #define BOOT_LOADER_SIG_2 0xaa
+
+// Kernel 和每个用户程序在镜像文件中占用的扇区数
+#define KERNEL_APP_SECTORS 15
 
 #define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0))
 
@@ -80,8 +85,8 @@ int main(int argc, char **argv)
 static void create_image(int nfiles, char *files[])
 {
     int tasknum = nfiles - 2;
-    int nbytes_kernel = 0;
-    int phyaddr = 0;
+    int nbytes_kernel = 0; // kernel 占用的字节数
+    int phyaddr = 0; // 物理地址偏移量，表示已经写入镜像文件的字节数
     FILE *fp = NULL, *img = NULL;
     Elf64_Ehdr ehdr;
     Elf64_Phdr phdr;
@@ -93,7 +98,7 @@ static void create_image(int nfiles, char *files[])
     /* for each input file */
     for (int fidx = 0; fidx < nfiles; ++fidx) { // 遍历提供的所有输入文件
 
-        int taskidx = fidx - 2;
+        int taskidx = fidx - 2; // 用户程序索引，跳过 bootblock 和 kernel
 
         /* open input file */
         fp = fopen(*files, "r"); // 按文件名打开文件
@@ -133,6 +138,9 @@ static void create_image(int nfiles, char *files[])
             write_padding(img, &phyaddr, SECTOR_SIZE);
             //这个函数的作用就是，如果 bootblock 的代码和数据不到512字节，就用0填充剩下的部分，
             //凑足一个扇区。这保证了内核（main）的内容能准确地从第二个扇区开始。
+        }
+        else { // 对kernel和用户程序进行填充，kernel 和每个用户程序都占用 KERNEL_APP_SECTORS 个扇区          
+            write_padding(img, &phyaddr, (fidx * KERNEL_APP_SECTORS + 1) * SECTOR_SIZE);
         }
 
         fclose(fp);
@@ -219,6 +227,20 @@ static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
 {
     // TODO: [p1-task3] & [p1-task4] write image info to some certain places
     // NOTE: os size, infomation about app-info sector(s) ...
+    
+    // 1. 写入 Kernel 占用的扇区数 (固定为 KERNEL_APP_SECTORS)
+    fseek(img, OS_SIZE_LOC, SEEK_SET);
+    short kernel_sectors = KERNEL_APP_SECTORS;
+    fwrite(&kernel_sectors, sizeof(short), 1, img);
+
+    // 2. 写入用户程序的数量 (总文件数 - 2: bootblock和kernel)
+    fseek(img, TASK_NUM_LOC, SEEK_SET);
+    fwrite(&tasknum, sizeof(short), 1, img);
+    
+    // 3. 写入 bootloader 签名
+    fseek(img, BOOT_LOADER_SIG_OFFSET, SEEK_SET);
+    fputc(BOOT_LOADER_SIG_1, img);
+    fputc(BOOT_LOADER_SIG_2, img);
 }
 
 /* print an error message and exit */

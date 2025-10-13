@@ -13,6 +13,10 @@
 
 /* TODO: [p1-task4] implement your own task_info_t! */
 typedef struct {
+    char name[TASK_NAME_LEN]; // 任务名
+    uint32_t offset;          // 在镜像文件中的偏移量 (bytes)
+    uint32_t size;            // 在镜像文件中的大小 (bytes)
+    uint64_t entry_point;     // 程序的入口地址
 
 } task_info_t;
 

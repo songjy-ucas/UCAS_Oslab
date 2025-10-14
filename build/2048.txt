@@ -5,8 +5,8 @@ build/2048:     file format elf64-littleriscv
 Disassembly of section .text:
 
 0000000052000000 <_start>:
-    52000000:	55000337          	lui	t1,0x55000
-    52000004:	00233023          	sd	sp,0(t1) # 55000000 <KERNEL_STACK_SAVE>
+    52000000:	5f000337          	lui	t1,0x5f000
+    52000004:	00233023          	sd	sp,0(t1) # 5f000000 <KERNEL_STACK_SAVE>
     52000008:	00000117          	auipc	sp,0x0
     5200000c:	ff810113          	addi	sp,sp,-8 # 52000000 <_start>
     52000010:	62c1                	lui	t0,0x10
@@ -28,8 +28,8 @@ Disassembly of section .text:
     52000036:	014000ef          	jal	5200004a <main>
     5200003a:	6082                	ld	ra,0(sp)
     5200003c:	0121                	addi	sp,sp,8
-    5200003e:	55000337          	lui	t1,0x55000
-    52000042:	00033103          	ld	sp,0(t1) # 55000000 <KERNEL_STACK_SAVE>
+    5200003e:	5f000337          	lui	t1,0x5f000
+    52000042:	00033103          	ld	sp,0(t1) # 5f000000 <KERNEL_STACK_SAVE>
     52000046:	8082                	ret
     52000048:	0001                	nop
 

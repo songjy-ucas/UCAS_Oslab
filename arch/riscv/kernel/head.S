@@ -16,20 +16,20 @@ ENTRY(_start)
 
   /* TODO: [p1-task2] clear BSS for flat non-ELF images */
   // clear .bss, using symbols from the provided riscv.lds
-  la a0, __bss_start
-  la a1, __BSS_END__
+  la t0, __bss_start
+  la t1, __BSS_END__
 bss_clear_loop:
   // Use sd (store doubleword) if the address is 8-byte aligned,
   // which is good practice. Loop until a0 is no longer less than a1.
-  sd zero, (a0)
-  addi a0, a0, 8
-  blt a0, a1, bss_clear_loop
+  sd zero, (t0)
+  addi t0, t0, 8
+  blt t0, t1, bss_clear_loop
 
 
   /* TODO: [p1-task2] setup C environment */
   // setup stack
   li sp, KERNEL_STACK
-  call main
+  call main   // 标准的C语言调用约定规定，函数的前两个整数参数就是通过 a0 和 a1 传递的,即TASK_NUM_ADDR和TASK_INFO_ADDR的值
 
 
 loop:

@@ -2,6 +2,8 @@
 
 // os size location (os_size could be sectors [p1-task3] or bytes [p1-task4])
 .equ os_size_loc, 0x502001fc
+.equ task_num_loc, 0x502001fa       
+.equ task_info_loc, 0x502001f8     
 
 // kernel address (move kernel to here, and jmp here to start kernel)
 .equ kernel, 0x50201000
@@ -34,7 +36,12 @@ main:
 	jal  bios_func_entry      // call bios
 
 	// TODO: [p1-task4] load task-related arguments and pass them to kernel
+    // 将元信息加载到参数寄存器 a0 和 a1
+    li   t0, task_num_loc
+    lh   a0, 0(t0)            // a0 = task_num
 
+    li   t0, task_info_loc
+    lh   a1, 0(t0)            // a1 = task_info_start_sector
 
 	// TODO: [p1-task2] jump to kernel to start UCAS-OS
 	li t0, kernel             // load kernel address to t0
@@ -48,7 +55,5 @@ stop:
 	j stop
 	nop
 
-.data
 
-msg: .string "It's a bootloader...\n\r"
 

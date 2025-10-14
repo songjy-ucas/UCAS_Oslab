@@ -10,7 +10,7 @@
 #define ARGS "[--extended] [--vm] <bootblock> <executable-file> ..."
 
 #define SECTOR_SIZE 512
-#define BOOT_LOADER_SIG_OFFSET 0x1fe
+#define BOOT_LOADER_SIG_OFFSET 0x1fe // Bootloader 签名位置
 #define OS_SIZE_LOC (BOOT_LOADER_SIG_OFFSET - 2) // OS 大小信息
 #define TASK_NUM_LOC (BOOT_LOADER_SIG_OFFSET - 4) // 用户程序数量
 #define TASK_INFO_START_LOC (BOOT_LOADER_SIG_OFFSET - 6) // task_info数组的起始扇区
@@ -20,11 +20,15 @@
 // Kernel 和每个用户程序在镜像文件中占用的扇区数
 #define KERNEL_APP_SECTORS 15
 
-#define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0))
+#define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0)) // 计算字节数对应的扇区数
 
 /* TODO: [p1-task4] design your own task_info_t */
+#define TASK_NAME_LEN    32 // 定义任务名的最大长度
 typedef struct {
-
+    char name[TASK_NAME_LEN];
+    uint32_t offset;
+    uint32_t size;
+    uint64_t entry_point;
 } task_info_t;
 
 #define TASK_MAXNUM 16
@@ -35,6 +39,8 @@ static struct {
     int vm;
     int extended;
 } options;
+
+static int g_task_info_offset = 0; // 全局变量，记录 task_info 数组在镜像文件中的偏移位置
 
 /* prototypes of local functions */
 static void create_image(int nfiles, char *files[]);
@@ -48,6 +54,7 @@ static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr);
 static void write_padding(FILE *img, int *phyaddr, int new_phyaddr);
 static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
                            short tasknum, FILE *img);
+static char* get_filename(char* path); // 从路径中提取文件名,因为task4需要通过识别文件名启动用户程序
 
 int main(int argc, char **argv)
 {
@@ -94,61 +101,126 @@ static void create_image(int nfiles, char *files[])
     /* open the image file */
     img = fopen(IMAGE_FILE, "w");
     assert(img != NULL);
+    
+ // 1. 处理 bootblock (files[0])
+    fp = fopen(files[0], "r");
+    assert(fp != NULL);
+    read_ehdr(&ehdr, fp);
+    for (int ph = 0; ph < ehdr.e_phnum; ph++) {
+        read_phdr(&phdr, fp, ph, ehdr);
+        if (phdr.p_type == PT_LOAD) write_segment(phdr, fp, img, &phyaddr);
+    }
+    write_padding(img, &phyaddr, SECTOR_SIZE);
+    fclose(fp);
 
-    /* for each input file */
-    for (int fidx = 0; fidx < nfiles; ++fidx) { // 遍历提供的所有输入文件
+    // 2. 处理 kernel (files[1])
+    fp = fopen(files[1], "r");
+    assert(fp != NULL);
+    read_ehdr(&ehdr, fp);
+    for (int ph = 0; ph < ehdr.e_phnum; ph++) {
+        read_phdr(&phdr, fp, ph, ehdr);
+        if (phdr.p_type == PT_LOAD) {
+            nbytes_kernel += phdr.p_filesz; // 正确计算内核字节数
+            write_segment(phdr, fp, img, &phyaddr);
+        }
+    }
+    fclose(fp);
 
-        int taskidx = fidx - 2; // 用户程序索引，跳过 bootblock 和 kernel
+// 3. 依次写入所有 user apps, 同时在内存中构建好 taskinfo 数组
+    for (int i = 0; i < tasknum; ++i) {
+        char* filename = files[i + 2];
+        int task_start_addr = phyaddr; // app 的 offset 就是当前文件指针的位置
 
-        /* open input file */
-        fp = fopen(*files, "r"); // 按文件名打开文件
+        fp = fopen(filename, "r");
         assert(fp != NULL);
+        read_ehdr(&ehdr, fp);
 
-        /* read ELF header */
-        read_ehdr(&ehdr, fp); // 读取 ELF 头
-        printf("0x%04lx: %s\n", ehdr.e_entry, *files);
+        // 填充内存中的 taskinfo 数组
+        strncpy(taskinfo[i].name, get_filename(filename), TASK_NAME_LEN);
+        taskinfo[i].entry_point = ehdr.e_entry;
+        taskinfo[i].offset = task_start_addr;
 
-        /* for each program header */
-        for (int ph = 0; ph < ehdr.e_phnum; ph++) { // 遍历所有程序头
-
-            /* read program header */
+        int app_begin_phyaddr = phyaddr;
+        for (int ph = 0; ph < ehdr.e_phnum; ph++) {
             read_phdr(&phdr, fp, ph, ehdr);
-
-            if (phdr.p_type != PT_LOAD) continue; // 只关心 PT_LOAD 段，其他类型的段（如调试信息）忽略
-
-            /* write segment to the image */
-            write_segment(phdr, fp, img, &phyaddr); 
-            //当前程序头描述的那个段（比如 .text 代码段或 .data 数据段）从输入文件 fp 中读出来，
-            //然后写入到我们的输出镜像 img 中。phyaddr 变量跟踪着我们在 img 文件中已经写入了多少字节。
-
-            /* update nbytes_kernel */
-            if (strcmp(*files, "main") == 0) {
-                nbytes_kernel += get_filesz(phdr);
+            if (phdr.p_type == PT_LOAD) {
+                write_segment(phdr, fp, img, &phyaddr);
             }
         }
-
-        /* write padding bytes */
-        /**
-         * TODO:
-         * 1. [p1-task3] do padding so that the kernel and every app program
-         *  occupies the same number of sectors
-         * 2. [p1-task4] only padding bootblock is allowed!
-         */
-        if (strcmp(*files, "bootblock") == 0) {
-            write_padding(img, &phyaddr, SECTOR_SIZE);
-            //这个函数的作用就是，如果 bootblock 的代码和数据不到512字节，就用0填充剩下的部分，
-            //凑足一个扇区。这保证了内核（main）的内容能准确地从第二个扇区开始。
-        }
-        else { // 对kernel和用户程序进行填充，kernel 和每个用户程序都占用 KERNEL_APP_SECTORS 个扇区          
-            write_padding(img, &phyaddr, (fidx * KERNEL_APP_SECTORS + 1) * SECTOR_SIZE);
-        }
-
+        taskinfo[i].size = phyaddr - app_begin_phyaddr;
         fclose(fp);
-        files++;
     }
+    
+    //  在追加 task_info 之前，先进行填充
+    //  确保 task_info 将从下一个扇区的边界开始写入
+    int next_sector_addr = NBYTES2SEC(phyaddr) * SECTOR_SIZE;
+    write_padding(img, &phyaddr, next_sector_addr);
+    
+    // 5. 现在，将 task_info 数组追加到文件末尾，它的起始位置是对齐的
+    g_task_info_offset = phyaddr; // 记录 task_info 数组的起始位置
+    fwrite(taskinfo, sizeof(task_info_t), tasknum, img);
+    phyaddr += sizeof(task_info_t) * tasknum;
+
+    // 6. 调用 write_img_info 写入元信息
     write_img_info(nbytes_kernel, taskinfo, tasknum, img);
 
     fclose(img);
+
+    // /* for each input file */
+    // for (int fidx = 0; fidx < nfiles; ++fidx) { // 遍历提供的所有输入文件
+
+    //     int taskidx = fidx - 2; // 用户程序索引，跳过 bootblock 和 kernel
+
+    //     /* open input file */
+    //     fp = fopen(*files, "r"); // 按文件名打开文件
+    //     assert(fp != NULL);
+
+    //     /* read ELF header */
+    //     read_ehdr(&ehdr, fp); // 读取 ELF 头,ehdr.e_phnum为程序头的数量，这个值直接告诉了内层循环需要循环多少次。
+    //                           // ehdr.e_phoff是程序头表的起始偏移地址。它告诉程序，描述所有段的“目录本身”（程序头表）存放在文件的哪个位置。
+    //     printf("0x%04lx: %s\n", ehdr.e_entry, *files); 
+
+    //     /* for each program header */
+    //     for (int ph = 0; ph < ehdr.e_phnum; ph++) { // 遍历所有程序头
+
+    //         /* read program header */
+    //         read_phdr(&phdr, fp, ph, ehdr);
+
+    //         if (phdr.p_type != PT_LOAD) continue; // 只关心 PT_LOAD 段，其他类型的段（如调试信息）忽略
+
+    //         /* write segment to the image */
+    //         write_segment(phdr, fp, img, &phyaddr); 
+    //         //当前程序头描述的那个段（比如 .text 代码段或 .data 数据段）从输入文件 fp 中读出来，
+    //         //然后写入到我们的输出镜像 img 中。phyaddr 变量跟踪着我们在 img 文件中已经写入了多少字节。
+
+    //         /* update nbytes_kernel */
+    //         if (strcmp(*files, "main") == 0) {
+    //             nbytes_kernel += get_filesz(phdr);
+    //         }
+    //     }
+
+    //     /* write padding bytes */
+    //     /**
+    //      * TODO:
+    //      * 1. [p1-task3] do padding so that the kernel and every app program
+    //      *  occupies the same number of sectors
+    //      * 2. [p1-task4] only padding bootblock is allowed!
+    //      */
+    //     if (strcmp(*files, "bootblock") == 0) {
+    //         write_padding(img, &phyaddr, SECTOR_SIZE);
+    //         //这个函数的作用就是，如果 bootblock 的代码和数据不到512字节，就用0填充剩下的部分，
+    //         //凑足一个扇区。这保证了内核（main）的内容能准确地从第二个扇区开始。
+    //     }
+    //     else { // 对kernel和用户程序进行填充，kernel 和每个用户程序都占用 KERNEL_APP_SECTORS 个扇区          
+    //         write_padding(img, &phyaddr, (fidx * KERNEL_APP_SECTORS + 1) * SECTOR_SIZE);
+    //     }
+
+    //     fclose(fp);
+    //     files++;
+    // }
+    // write_img_info(nbytes_kernel, taskinfo, tasknum, img);
+
+    // fclose(img);
 }
 
 static void read_ehdr(Elf64_Ehdr * ehdr, FILE * fp)
@@ -194,7 +266,7 @@ static uint32_t get_memsz(Elf64_Phdr phdr)
     return phdr.p_memsz;
 }
 
-static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr)
+static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr) // 
 {
     if (phdr.p_memsz != 0 && phdr.p_type == PT_LOAD) {
         /* write the segment itself */
@@ -204,8 +276,8 @@ static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr)
         }
         fseek(fp, phdr.p_offset, SEEK_SET);
         while (phdr.p_filesz-- > 0) {
-            fputc(fgetc(fp), img);
-            (*phyaddr)++;
+            fputc(fgetc(fp), img); // 从输入文件读取一个字节，写入到镜像文件
+            (*phyaddr)++; // 更新物理地址偏移量
         }
     }
 }
@@ -220,6 +292,12 @@ static void write_padding(FILE *img, int *phyaddr, int new_phyaddr)
         fputc(0, img);
         (*phyaddr)++;
     }
+}
+
+// 辅助函数，从路径中提取文件名
+static char* get_filename(char* path) {
+    char* s = strrchr(path, '/');
+    return (s == NULL) ? path : s + 1;
 }
 
 static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
@@ -241,6 +319,11 @@ static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
     fseek(img, BOOT_LOADER_SIG_OFFSET, SEEK_SET);
     fputc(BOOT_LOADER_SIG_1, img);
     fputc(BOOT_LOADER_SIG_2, img);
+
+    // TASK4: 写入 task_info 数组的起始扇区(使用全局变量) 
+    fseek(img, TASK_INFO_START_LOC, SEEK_SET);
+    short task_info_start_sector = (short)(g_task_info_offset / SECTOR_SIZE);
+    fwrite(&task_info_start_sector, sizeof(short), 1, img);
 }
 
 /* print an error message and exit */

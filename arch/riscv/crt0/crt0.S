@@ -4,7 +4,7 @@
 
 # Makefile 为每个用户程序分配的内存空间大小 (0x10000 = 64KB)
 .equ USER_MEM_SIZE, 0x10000
-.equ KERNEL_STACK_SAVE, 0x55000000  # 内核栈的保存位置
+.equ KERNEL_STACK_SAVE, 0x5f000000  # 内核栈的保存位置
 .section ".entry_function","ax"
 ENTRY(_start)
 

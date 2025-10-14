@@ -5,8 +5,8 @@ build/auipc:     file format elf64-littleriscv
 Disassembly of section .text:
 
 0000000052010000 <_start>:
-    52010000:	55000337          	lui	t1,0x55000
-    52010004:	00233023          	sd	sp,0(t1) # 55000000 <KERNEL_STACK_SAVE>
+    52010000:	5f000337          	lui	t1,0x5f000
+    52010004:	00233023          	sd	sp,0(t1) # 5f000000 <KERNEL_STACK_SAVE>
     52010008:	00000117          	auipc	sp,0x0
     5201000c:	ff810113          	addi	sp,sp,-8 # 52010000 <_start>
     52010010:	62c1                	lui	t0,0x10
@@ -28,8 +28,8 @@ Disassembly of section .text:
     52010036:	014000ef          	jal	5201004a <main>
     5201003a:	6082                	ld	ra,0(sp)
     5201003c:	0121                	addi	sp,sp,8
-    5201003e:	55000337          	lui	t1,0x55000
-    52010042:	00033103          	ld	sp,0(t1) # 55000000 <KERNEL_STACK_SAVE>
+    5201003e:	5f000337          	lui	t1,0x5f000
+    52010042:	00033103          	ld	sp,0(t1) # 5f000000 <KERNEL_STACK_SAVE>
     52010046:	8082                	ret
     52010048:	0001                	nop
 

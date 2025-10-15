@@ -14,9 +14,9 @@ Disassembly of section .text:
     52000014:	1161                	addi	sp,sp,-8
     52000016:	e006                	sd	ra,0(sp)
     52000018:	00001517          	auipc	a0,0x1
-    5200001c:	25050513          	addi	a0,a0,592 # 52001268 <__BSS_END__>
+    5200001c:	43c50513          	addi	a0,a0,1084 # 52001454 <__DATA_BEGIN__>
     52000020:	00001597          	auipc	a1,0x1
-    52000024:	24858593          	addi	a1,a1,584 # 52001268 <__BSS_END__>
+    52000024:	43858593          	addi	a1,a1,1080 # 52001458 <__BSS_END__>
     52000028:	00b57763          	bgeu	a0,a1,52000036 <bss_clear_done>
 
 000000005200002c <bss_clear_loop>:
@@ -56,7 +56,7 @@ Disassembly of section .text:
     5200007e:	4601                	li	a2,0
     52000080:	4581                	li	a1,0
     52000082:	00001517          	auipc	a0,0x1
-    52000086:	ae650513          	addi	a0,a0,-1306 # 52000b68 <print_scores+0x9e>
+    52000086:	c0650513          	addi	a0,a0,-1018 # 52000c88 <set_shared_mem+0xa>
     5200008a:	9782                	jalr	a5
     5200008c:	0108                	addi	a0,sp,128
     5200008e:	510000ef          	jal	5200059e <print>
@@ -66,7 +66,7 @@ Disassembly of section .text:
     5200009a:	4601                	li	a2,0
     5200009c:	4581                	li	a1,0
     5200009e:	00001517          	auipc	a0,0x1
-    520000a2:	d0250513          	addi	a0,a0,-766 # 52000da0 <print_scores+0x2d6>
+    520000a2:	e2250513          	addi	a0,a0,-478 # 52000ec0 <set_shared_mem+0x242>
     520000a6:	9782                	jalr	a5
     520000a8:	00b8                	addi	a4,sp,72
     520000aa:	4781                	li	a5,0
@@ -88,7 +88,7 @@ Disassembly of section .text:
     520000d0:	4601                	li	a2,0
     520000d2:	4581                	li	a1,0
     520000d4:	00001517          	auipc	a0,0x1
-    520000d8:	cdc50513          	addi	a0,a0,-804 # 52000db0 <print_scores+0x2e6>
+    520000d8:	dfc50513          	addi	a0,a0,-516 # 52000ed0 <set_shared_mem+0x252>
     520000dc:	9782                	jalr	a5
     520000de:	8522                	mv	a0,s0
     520000e0:	0818                	addi	a4,sp,16
@@ -110,7 +110,7 @@ Disassembly of section .text:
     52000106:	4601                	li	a2,0
     52000108:	4581                	li	a1,0
     5200010a:	00001517          	auipc	a0,0x1
-    5200010e:	cb650513          	addi	a0,a0,-842 # 52000dc0 <print_scores+0x2f6>
+    5200010e:	dd650513          	addi	a0,a0,-554 # 52000ee0 <set_shared_mem+0x262>
     52000112:	9782                	jalr	a5
     52000114:	547d                	li	s0,-1
     52000116:	609c                	ld	a5,0(s1)
@@ -145,7 +145,7 @@ Disassembly of section .text:
     52000166:	4601                	li	a2,0
     52000168:	4581                	li	a1,0
     5200016a:	00001517          	auipc	a0,0x1
-    5200016e:	ade50513          	addi	a0,a0,-1314 # 52000c48 <print_scores+0x17e>
+    5200016e:	bfe50513          	addi	a0,a0,-1026 # 52000d68 <set_shared_mem+0xea>
     52000172:	9782                	jalr	a5
     52000174:	b709                	j	52000076 <main+0x2c>
     52000176:	0108                	addi	a0,sp,128
@@ -154,7 +154,7 @@ Disassembly of section .text:
     5200017c:	0c7000ef          	jal	52000a42 <initialize>
     52000180:	bddd                	j	52000076 <main+0x2c>
     52000182:	00001517          	auipc	a0,0x1
-    52000186:	9e650513          	addi	a0,a0,-1562 # 52000b68 <print_scores+0x9e>
+    52000186:	b0650513          	addi	a0,a0,-1274 # 52000c88 <set_shared_mem+0xa>
     5200018a:	030000ef          	jal	520001ba <bios_putstr>
     5200018e:	0108                	addi	a0,sp,128
     52000190:	40e000ef          	jal	5200059e <print>
@@ -170,7 +170,7 @@ Disassembly of section .text:
     520001a8:	616d                	addi	sp,sp,240
     520001aa:	8082                	ret
     520001ac:	00001517          	auipc	a0,0x1
-    520001b0:	c1c50513          	addi	a0,a0,-996 # 52000dc8 <print_scores+0x2fe>
+    520001b0:	d3c50513          	addi	a0,a0,-708 # 52000ee8 <set_shared_mem+0x26a>
     520001b4:	006000ef          	jal	520001ba <bios_putstr>
     520001b8:	b7d5                	j	5200019c <main+0x152>
 
@@ -289,7 +289,7 @@ Disassembly of section .text:
     520002e0:	4601                	li	a2,0
     520002e2:	4581                	li	a1,0
     520002e4:	00001517          	auipc	a0,0x1
-    520002e8:	88450513          	addi	a0,a0,-1916 # 52000b68 <print_scores+0x9e>
+    520002e8:	9a450513          	addi	a0,a0,-1628 # 52000c88 <set_shared_mem+0xa>
     520002ec:	8782                	jr	a5
 
 00000000520002ee <getchar>:
@@ -355,8 +355,8 @@ Disassembly of section .text:
     5200037a:	4681                	li	a3,0
     5200037c:	4601                	li	a2,0
     5200037e:	4581                	li	a1,0
-    52000380:	00000517          	auipc	a0,0x0
-    52000384:	7f850513          	addi	a0,a0,2040 # 52000b78 <print_scores+0xae>
+    52000380:	00001517          	auipc	a0,0x1
+    52000384:	91850513          	addi	a0,a0,-1768 # 52000c98 <set_shared_mem+0x1a>
     52000388:	2405                	addiw	s0,s0,1
     5200038a:	9782                	jalr	a5
     5200038c:	fe8915e3          	bne	s2,s0,52000376 <printSpaces+0x1a>
@@ -391,8 +391,8 @@ Disassembly of section .text:
     520003d2:	4681                	li	a3,0
     520003d4:	4601                	li	a2,0
     520003d6:	4581                	li	a1,0
-    520003d8:	00000517          	auipc	a0,0x0
-    520003dc:	7f050513          	addi	a0,a0,2032 # 52000bc8 <print_scores+0xfe>
+    520003d8:	00001517          	auipc	a0,0x1
+    520003dc:	91050513          	addi	a0,a0,-1776 # 52000ce8 <set_shared_mem+0x6a>
     520003e0:	6105                	addi	sp,sp,32
     520003e2:	8782                	jr	a5
     520003e4:	52000737          	lui	a4,0x52000
@@ -402,8 +402,8 @@ Disassembly of section .text:
     520003f0:	4681                	li	a3,0
     520003f2:	4601                	li	a2,0
     520003f4:	4581                	li	a1,0
-    520003f6:	00000517          	auipc	a0,0x0
-    520003fa:	79a50513          	addi	a0,a0,1946 # 52000b90 <print_scores+0xc6>
+    520003f6:	00001517          	auipc	a0,0x1
+    520003fa:	8ba50513          	addi	a0,a0,-1862 # 52000cb0 <set_shared_mem+0x32>
     520003fe:	9802                	jalr	a6
     52000400:	67a2                	ld	a5,8(sp)
     52000402:	8007879b          	addiw	a5,a5,-2048
@@ -417,7 +417,7 @@ Disassembly of section .text:
     5200041a:	4601                	li	a2,0
     5200041c:	4581                	li	a1,0
     5200041e:	00001517          	auipc	a0,0x1
-    52000422:	81a50513          	addi	a0,a0,-2022 # 52000c38 <print_scores+0x16e>
+    52000422:	93a50513          	addi	a0,a0,-1734 # 52000d58 <set_shared_mem+0xda>
     52000426:	6105                	addi	sp,sp,32
     52000428:	8782                	jr	a5
     5200042a:	520007b7          	lui	a5,0x52000
@@ -428,8 +428,8 @@ Disassembly of section .text:
     52000438:	4681                	li	a3,0
     5200043a:	4601                	li	a2,0
     5200043c:	4581                	li	a1,0
-    5200043e:	00000517          	auipc	a0,0x0
-    52000442:	77a50513          	addi	a0,a0,1914 # 52000bb8 <print_scores+0xee>
+    5200043e:	00001517          	auipc	a0,0x1
+    52000442:	89a50513          	addi	a0,a0,-1894 # 52000cd8 <set_shared_mem+0x5a>
     52000446:	6105                	addi	sp,sp,32
     52000448:	8782                	jr	a5
     5200044a:	520007b7          	lui	a5,0x52000
@@ -440,8 +440,8 @@ Disassembly of section .text:
     52000458:	4681                	li	a3,0
     5200045a:	4601                	li	a2,0
     5200045c:	4581                	li	a1,0
-    5200045e:	00000517          	auipc	a0,0x0
-    52000462:	74a50513          	addi	a0,a0,1866 # 52000ba8 <print_scores+0xde>
+    5200045e:	00001517          	auipc	a0,0x1
+    52000462:	86a50513          	addi	a0,a0,-1942 # 52000cc8 <set_shared_mem+0x4a>
     52000466:	6105                	addi	sp,sp,32
     52000468:	8782                	jr	a5
     5200046a:	520007b7          	lui	a5,0x52000
@@ -452,8 +452,8 @@ Disassembly of section .text:
     52000478:	4681                	li	a3,0
     5200047a:	4601                	li	a2,0
     5200047c:	4581                	li	a1,0
-    5200047e:	00000517          	auipc	a0,0x0
-    52000482:	71a50513          	addi	a0,a0,1818 # 52000b98 <print_scores+0xce>
+    5200047e:	00001517          	auipc	a0,0x1
+    52000482:	83a50513          	addi	a0,a0,-1990 # 52000cb8 <set_shared_mem+0x3a>
     52000486:	6105                	addi	sp,sp,32
     52000488:	8782                	jr	a5
     5200048a:	52000737          	lui	a4,0x52000
@@ -463,8 +463,8 @@ Disassembly of section .text:
     52000496:	4681                	li	a3,0
     52000498:	4601                	li	a2,0
     5200049a:	4581                	li	a1,0
-    5200049c:	00000517          	auipc	a0,0x0
-    520004a0:	6e450513          	addi	a0,a0,1764 # 52000b80 <print_scores+0xb6>
+    5200049c:	00001517          	auipc	a0,0x1
+    520004a0:	80450513          	addi	a0,a0,-2044 # 52000ca0 <set_shared_mem+0x22>
     520004a4:	9802                	jalr	a6
     520004a6:	67a2                	ld	a5,8(sp)
     520004a8:	08000713          	li	a4,128
@@ -477,8 +477,8 @@ Disassembly of section .text:
     520004be:	4681                	li	a3,0
     520004c0:	4601                	li	a2,0
     520004c2:	4581                	li	a1,0
-    520004c4:	00000517          	auipc	a0,0x0
-    520004c8:	73450513          	addi	a0,a0,1844 # 52000bf8 <print_scores+0x12e>
+    520004c4:	00001517          	auipc	a0,0x1
+    520004c8:	85450513          	addi	a0,a0,-1964 # 52000d18 <set_shared_mem+0x9a>
     520004cc:	6105                	addi	sp,sp,32
     520004ce:	8782                	jr	a5
     520004d0:	02000713          	li	a4,32
@@ -491,8 +491,8 @@ Disassembly of section .text:
     520004e6:	4681                	li	a3,0
     520004e8:	4601                	li	a2,0
     520004ea:	4581                	li	a1,0
-    520004ec:	00000517          	auipc	a0,0x0
-    520004f0:	6ec50513          	addi	a0,a0,1772 # 52000bd8 <print_scores+0x10e>
+    520004ec:	00001517          	auipc	a0,0x1
+    520004f0:	80c50513          	addi	a0,a0,-2036 # 52000cf8 <set_shared_mem+0x7a>
     520004f4:	6105                	addi	sp,sp,32
     520004f6:	8782                	jr	a5
     520004f8:	04000713          	li	a4,64
@@ -506,7 +506,7 @@ Disassembly of section .text:
     52000510:	4601                	li	a2,0
     52000512:	4581                	li	a1,0
     52000514:	00000517          	auipc	a0,0x0
-    52000518:	6d450513          	addi	a0,a0,1748 # 52000be8 <print_scores+0x11e>
+    52000518:	7f450513          	addi	a0,a0,2036 # 52000d08 <set_shared_mem+0x8a>
     5200051c:	6105                	addi	sp,sp,32
     5200051e:	8782                	jr	a5
     52000520:	60e2                	ld	ra,24(sp)
@@ -523,7 +523,7 @@ Disassembly of section .text:
     5200053e:	4601                	li	a2,0
     52000540:	4581                	li	a1,0
     52000542:	00000517          	auipc	a0,0x0
-    52000546:	6c650513          	addi	a0,a0,1734 # 52000c08 <print_scores+0x13e>
+    52000546:	7e650513          	addi	a0,a0,2022 # 52000d28 <set_shared_mem+0xaa>
     5200054a:	6105                	addi	sp,sp,32
     5200054c:	8782                	jr	a5
     5200054e:	20000713          	li	a4,512
@@ -537,7 +537,7 @@ Disassembly of section .text:
     52000566:	4601                	li	a2,0
     52000568:	4581                	li	a1,0
     5200056a:	00000517          	auipc	a0,0x0
-    5200056e:	6ae50513          	addi	a0,a0,1710 # 52000c18 <print_scores+0x14e>
+    5200056e:	7ce50513          	addi	a0,a0,1998 # 52000d38 <set_shared_mem+0xba>
     52000572:	6105                	addi	sp,sp,32
     52000574:	8782                	jr	a5
     52000576:	40000713          	li	a4,1024
@@ -551,7 +551,7 @@ Disassembly of section .text:
     5200058e:	4601                	li	a2,0
     52000590:	4581                	li	a1,0
     52000592:	00000517          	auipc	a0,0x0
-    52000596:	69650513          	addi	a0,a0,1686 # 52000c28 <print_scores+0x15e>
+    52000596:	7b650513          	addi	a0,a0,1974 # 52000d48 <set_shared_mem+0xca>
     5200059a:	6105                	addi	sp,sp,32
     5200059c:	8782                	jr	a5
 
@@ -575,7 +575,7 @@ Disassembly of section .text:
     520005c2:	01050a13          	addi	s4,a0,16
     520005c6:	05050b13          	addi	s6,a0,80
     520005ca:	00000517          	auipc	a0,0x0
-    520005ce:	67e50513          	addi	a0,a0,1662 # 52000c48 <print_scores+0x17e>
+    520005ce:	79e50513          	addi	a0,a0,1950 # 52000d68 <set_shared_mem+0xea>
     520005d2:	f0048493          	addi	s1,s1,-256
     520005d6:	9782                	jalr	a5
     520005d8:	4ba5                	li	s7,9
@@ -587,7 +587,7 @@ Disassembly of section .text:
     520005e8:	4601                	li	a2,0
     520005ea:	4581                	li	a1,0
     520005ec:	00000517          	auipc	a0,0x0
-    520005f0:	58c50513          	addi	a0,a0,1420 # 52000b78 <print_scores+0xae>
+    520005f0:	6ac50513          	addi	a0,a0,1708 # 52000c98 <set_shared_mem+0x1a>
     520005f4:	9782                	jalr	a5
     520005f6:	00092503          	lw	a0,0(s2)
     520005fa:	4421                	li	s0,8
@@ -600,7 +600,7 @@ Disassembly of section .text:
     5200060c:	4601                	li	a2,0
     5200060e:	4581                	li	a1,0
     52000610:	00000517          	auipc	a0,0x0
-    52000614:	56850513          	addi	a0,a0,1384 # 52000b78 <print_scores+0xae>
+    52000614:	68850513          	addi	a0,a0,1672 # 52000c98 <set_shared_mem+0x1a>
     52000618:	347d                	addiw	s0,s0,-1
     5200061a:	9782                	jalr	a5
     5200061c:	f46d                	bnez	s0,52000606 <print+0x68>
@@ -610,7 +610,7 @@ Disassembly of section .text:
     52000624:	4601                	li	a2,0
     52000626:	4581                	li	a1,0
     52000628:	00000517          	auipc	a0,0x0
-    5200062c:	55850513          	addi	a0,a0,1368 # 52000b80 <print_scores+0xb6>
+    5200062c:	67850513          	addi	a0,a0,1656 # 52000ca0 <set_shared_mem+0x22>
     52000630:	0911                	addi	s2,s2,4
     52000632:	9782                	jalr	a5
     52000634:	fb4917e3          	bne	s2,s4,520005e2 <print+0x44>
@@ -620,7 +620,7 @@ Disassembly of section .text:
     5200063e:	4601                	li	a2,0
     52000640:	4581                	li	a1,0
     52000642:	00000517          	auipc	a0,0x0
-    52000646:	60650513          	addi	a0,a0,1542 # 52000c48 <print_scores+0x17e>
+    52000646:	72650513          	addi	a0,a0,1830 # 52000d68 <set_shared_mem+0xea>
     5200064a:	01090a13          	addi	s4,s2,16
     5200064e:	9782                	jalr	a5
     52000650:	f96a15e3          	bne	s4,s6,520005da <print+0x3c>
@@ -664,7 +664,7 @@ Disassembly of section .text:
     520006b2:	4601                	li	a2,0
     520006b4:	4581                	li	a1,0
     520006b6:	00000517          	auipc	a0,0x0
-    520006ba:	4c250513          	addi	a0,a0,1218 # 52000b78 <print_scores+0xae>
+    520006ba:	5e250513          	addi	a0,a0,1506 # 52000c98 <set_shared_mem+0x1a>
     520006be:	2405                	addiw	s0,s0,1
     520006c0:	9782                	jalr	a5
     520006c2:	fe8995e3          	bne	s3,s0,520006ac <print+0x10e>
@@ -862,7 +862,7 @@ Disassembly of section .text:
     520008c0:	03600713          	li	a4,54
     520008c4:	08f76963          	bltu	a4,a5,52000956 <onKeyPress+0x9e>
     520008c8:	00000717          	auipc	a4,0x0
-    520008cc:	51c70713          	addi	a4,a4,1308 # 52000de4 <print_scores+0x31a>
+    520008cc:	63c70713          	addi	a4,a4,1596 # 52000f04 <set_shared_mem+0x286>
     520008d0:	078a                	slli	a5,a5,0x2
     520008d2:	97ba                	add	a5,a5,a4
     520008d4:	439c                	lw	a5,0(a5)
@@ -1044,7 +1044,7 @@ Disassembly of section .text:
     52000a8a:	4601                	li	a2,0
     52000a8c:	4581                	li	a1,0
     52000a8e:	00000517          	auipc	a0,0x0
-    52000a92:	1c250513          	addi	a0,a0,450 # 52000c50 <print_scores+0x186>
+    52000a92:	2e250513          	addi	a0,a0,738 # 52000d70 <set_shared_mem+0xf2>
     52000a96:	52000437          	lui	s0,0x52000
     52000a9a:	9782                	jalr	a5
     52000a9c:	f1040413          	addi	s0,s0,-240 # 51ffff10 <USER_MEM_SIZE+0x51feff10>
@@ -1083,7 +1083,7 @@ Disassembly of section .text:
     52000ae4:	4601                	li	a2,0
     52000ae6:	4581                	li	a1,0
     52000ae8:	00000517          	auipc	a0,0x0
-    52000aec:	2b850513          	addi	a0,a0,696 # 52000da0 <print_scores+0x2d6>
+    52000aec:	3d850513          	addi	a0,a0,984 # 52000ec0 <set_shared_mem+0x242>
     52000af0:	9782                	jalr	a5
     52000af2:	0038                	addi	a4,sp,8
     52000af4:	854a                	mv	a0,s2
@@ -1105,7 +1105,7 @@ Disassembly of section .text:
     52000b1a:	4601                	li	a2,0
     52000b1c:	4581                	li	a1,0
     52000b1e:	00000517          	auipc	a0,0x0
-    52000b22:	29250513          	addi	a0,a0,658 # 52000db0 <print_scores+0x2e6>
+    52000b22:	3b250513          	addi	a0,a0,946 # 52000ed0 <set_shared_mem+0x252>
     52000b26:	9782                	jalr	a5
     52000b28:	0038                	addi	a4,sp,8
     52000b2a:	8526                	mv	a0,s1
@@ -1131,6 +1131,127 @@ Disassembly of section .text:
     52000b58:	4601                	li	a2,0
     52000b5a:	4581                	li	a1,0
     52000b5c:	00000517          	auipc	a0,0x0
-    52000b60:	26450513          	addi	a0,a0,612 # 52000dc0 <print_scores+0x2f6>
+    52000b60:	38450513          	addi	a0,a0,900 # 52000ee0 <set_shared_mem+0x262>
     52000b64:	6125                	addi	sp,sp,96
     52000b66:	8782                	jr	a5
+
+0000000052000b68 <print_s>:
+    52000b68:	1101                	addi	sp,sp,-32
+    52000b6a:	e822                	sd	s0,16(sp)
+    52000b6c:	ec06                	sd	ra,24(sp)
+    52000b6e:	842a                	mv	s0,a0
+    52000b70:	00054503          	lbu	a0,0(a0)
+    52000b74:	c10d                	beqz	a0,52000b96 <print_s+0x2e>
+    52000b76:	e426                	sd	s1,8(sp)
+    52000b78:	520004b7          	lui	s1,0x52000
+    52000b7c:	f0848493          	addi	s1,s1,-248 # 51ffff08 <USER_MEM_SIZE+0x51feff08>
+    52000b80:	609c                	ld	a5,0(s1)
+    52000b82:	4701                	li	a4,0
+    52000b84:	4681                	li	a3,0
+    52000b86:	4601                	li	a2,0
+    52000b88:	4581                	li	a1,0
+    52000b8a:	0405                	addi	s0,s0,1
+    52000b8c:	9782                	jalr	a5
+    52000b8e:	00044503          	lbu	a0,0(s0)
+    52000b92:	f57d                	bnez	a0,52000b80 <print_s+0x18>
+    52000b94:	64a2                	ld	s1,8(sp)
+    52000b96:	60e2                	ld	ra,24(sp)
+    52000b98:	6442                	ld	s0,16(sp)
+    52000b9a:	6105                	addi	sp,sp,32
+    52000b9c:	8082                	ret
+
+0000000052000b9e <print_d>:
+    52000b9e:	7139                	addi	sp,sp,-64
+    52000ba0:	f426                	sd	s1,40(sp)
+    52000ba2:	fc06                	sd	ra,56(sp)
+    52000ba4:	84aa                	mv	s1,a0
+    52000ba6:	06054f63          	bltz	a0,52000c24 <print_d+0x86>
+    52000baa:	cd49                	beqz	a0,52000c44 <print_d+0xa6>
+    52000bac:	f822                	sd	s0,48(sp)
+    52000bae:	f04a                	sd	s2,32(sp)
+    52000bb0:	66666537          	lui	a0,0x66666
+    52000bb4:	840a                	mv	s0,sp
+    52000bb6:	860a                	mv	a2,sp
+    52000bb8:	66750513          	addi	a0,a0,1639 # 66666667 <KERNEL_STACK_SAVE+0x7666667>
+    52000bbc:	02a48733          	mul	a4,s1,a0
+    52000bc0:	41f4d69b          	sraiw	a3,s1,0x1f
+    52000bc4:	85b2                	mv	a1,a2
+    52000bc6:	0605                	addi	a2,a2,1
+    52000bc8:	9709                	srai	a4,a4,0x22
+    52000bca:	9f15                	subw	a4,a4,a3
+    52000bcc:	0027169b          	slliw	a3,a4,0x2
+    52000bd0:	9eb9                	addw	a3,a3,a4
+    52000bd2:	0016969b          	slliw	a3,a3,0x1
+    52000bd6:	40d487bb          	subw	a5,s1,a3
+    52000bda:	0307879b          	addiw	a5,a5,48
+    52000bde:	fef60fa3          	sb	a5,-1(a2)
+    52000be2:	84ba                	mv	s1,a4
+    52000be4:	ff61                	bnez	a4,52000bbc <print_d+0x1e>
+    52000be6:	9d81                	subw	a1,a1,s0
+    52000be8:	fff40493          	addi	s1,s0,-1
+    52000bec:	02059793          	slli	a5,a1,0x20
+    52000bf0:	9381                	srli	a5,a5,0x20
+    52000bf2:	94ae                	add	s1,s1,a1
+    52000bf4:	52000937          	lui	s2,0x52000
+    52000bf8:	8c9d                	sub	s1,s1,a5
+    52000bfa:	942e                	add	s0,s0,a1
+    52000bfc:	f0890913          	addi	s2,s2,-248 # 51ffff08 <USER_MEM_SIZE+0x51feff08>
+    52000c00:	00044503          	lbu	a0,0(s0)
+    52000c04:	00093783          	ld	a5,0(s2)
+    52000c08:	4701                	li	a4,0
+    52000c0a:	4681                	li	a3,0
+    52000c0c:	4601                	li	a2,0
+    52000c0e:	4581                	li	a1,0
+    52000c10:	147d                	addi	s0,s0,-1
+    52000c12:	9782                	jalr	a5
+    52000c14:	fe9416e3          	bne	s0,s1,52000c00 <print_d+0x62>
+    52000c18:	7442                	ld	s0,48(sp)
+    52000c1a:	70e2                	ld	ra,56(sp)
+    52000c1c:	7902                	ld	s2,32(sp)
+    52000c1e:	74a2                	ld	s1,40(sp)
+    52000c20:	6121                	addi	sp,sp,64
+    52000c22:	8082                	ret
+    52000c24:	52000737          	lui	a4,0x52000
+    52000c28:	f0873803          	ld	a6,-248(a4) # 51ffff08 <USER_MEM_SIZE+0x51feff08>
+    52000c2c:	f822                	sd	s0,48(sp)
+    52000c2e:	f04a                	sd	s2,32(sp)
+    52000c30:	4701                	li	a4,0
+    52000c32:	4681                	li	a3,0
+    52000c34:	4601                	li	a2,0
+    52000c36:	4581                	li	a1,0
+    52000c38:	02d00513          	li	a0,45
+    52000c3c:	9802                	jalr	a6
+    52000c3e:	409004bb          	negw	s1,s1
+    52000c42:	b7bd                	j	52000bb0 <print_d+0x12>
+    52000c44:	520007b7          	lui	a5,0x52000
+    52000c48:	f0878793          	addi	a5,a5,-248 # 51ffff08 <USER_MEM_SIZE+0x51feff08>
+    52000c4c:	70e2                	ld	ra,56(sp)
+    52000c4e:	74a2                	ld	s1,40(sp)
+    52000c50:	639c                	ld	a5,0(a5)
+    52000c52:	4701                	li	a4,0
+    52000c54:	4681                	li	a3,0
+    52000c56:	4601                	li	a2,0
+    52000c58:	4581                	li	a1,0
+    52000c5a:	03000513          	li	a0,48
+    52000c5e:	6121                	addi	sp,sp,64
+    52000c60:	8782                	jr	a5
+
+0000000052000c62 <print_c>:
+    52000c62:	520007b7          	lui	a5,0x52000
+    52000c66:	f0878793          	addi	a5,a5,-248 # 51ffff08 <USER_MEM_SIZE+0x51feff08>
+    52000c6a:	639c                	ld	a5,0(a5)
+    52000c6c:	4701                	li	a4,0
+    52000c6e:	4681                	li	a3,0
+    52000c70:	4601                	li	a2,0
+    52000c72:	4581                	li	a1,0
+    52000c74:	8782                	jr	a5
+
+0000000052000c76 <get_shared_mem>:
+    52000c76:	5f0007b7          	lui	a5,0x5f000
+    52000c7a:	4b88                	lw	a0,16(a5)
+    52000c7c:	8082                	ret
+
+0000000052000c7e <set_shared_mem>:
+    52000c7e:	5f0007b7          	lui	a5,0x5f000
+    52000c82:	cb88                	sw	a0,16(a5)
+    52000c84:	8082                	ret

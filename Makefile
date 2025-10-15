@@ -41,7 +41,7 @@ KERNEL_INCLUDE  = -I$(DIR_ARCH)/include -Iinclude
 KERNEL_CFLAGS   = $(CFLAGS) $(KERNEL_INCLUDE) -Wl,--defsym=TEXT_START=$(KERNEL_ENTRYPOINT) -T riscv.lds
 
 USER_INCLUDE    = -I$(DIR_TINYLIBC)/include
-USER_CFLAGS     = $(CFLAGS) $(USER_INCLUDE)
+USER_CFLAGS     = $(CFLAGS) $(USER_INCLUDE) $(KERNEL_INCLUDE) # 新增 $(KERNEL_INCLUDE)，以便用户程序也能包含内核的头文件
 
 QEMU_OPTS       = -nographic -machine virt -m 256M -kernel $(UBOOT) -bios none \
                      -drive if=none,format=raw,id=image,file=${ELF_IMAGE} \
@@ -89,6 +89,10 @@ ELF_IMAGE   = $(DIR_BUILD)/image
 
 SRC_CRT0    = $(wildcard $(DIR_ARCH)/crt0/*.S)
 OBJ_CRT0    = $(DIR_BUILD)/$(notdir $(SRC_CRT0:.S=.o))
+
+# 自动找到 tiny_libc 目录下的所有 .c 文件
+SRC_TINYLIBC = $(wildcard $(DIR_TINYLIBC)/*.c)
+OBJ_TINYLIBC = $(patsubst %.c, %.o, $(foreach file, $(SRC_TINYLIBC), $(DIR_BUILD)/$(notdir $(file))))
 
 SRC_USER    = $(wildcard $(DIR_TEST_PROJ)/*.c)
 ELF_USER    = $(patsubst %.c, %, $(foreach file, $(SRC_USER), $(DIR_BUILD)/$(notdir $(file))))
@@ -146,9 +150,13 @@ $(ELF_MAIN): $(SRC_MAIN) riscv.lds
 $(OBJ_CRT0): $(SRC_CRT0)
 	$(CC) $(USER_CFLAGS) -I$(DIR_ARCH)/include -c $< -o $@
 
-$(DIR_BUILD)/%: $(DIR_TEST_PROJ)/%.c $(OBJ_CRT0) riscv.lds
-	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds
-	$(eval USER_ENTRYPOINT := $(shell python3 -c "print(hex(int('$(USER_ENTRYPOINT)', 16) + int('0x10000', 16)))"))
+$(DIR_BUILD)/%: $(DIR_TEST_PROJ)/%.c $(OBJ_CRT0) $(OBJ_TINYLIBC) riscv.lds # 在链接 prog1 之前，必须先确保 lib.o 已经编译好了
+	$(CC) $(USER_CFLAGS) -o $@ $(OBJ_CRT0) $< $(OBJ_TINYLIBC) -Wl,--defsym=TEXT_START=$(USER_ENTRYPOINT) -T riscv.lds 
+	$(eval USER_ENTRYPOINT := $(shell python3 -c "print(hex(int('$(USER_ENTRYPOINT)', 16) + int('0x10000', 16)))")) # 把 crt0.o、prog1.c 和 lib.o 一起打包生成最终的 prog1 文件
+
+# 生成 tiny_libc 目录下每个 .c 文件对应的 .o 文件
+$(DIR_BUILD)/%.o: $(DIR_TINYLIBC)/%.c
+	$(CC) $(USER_CFLAGS) -c $< -o $@ 
 
 elf: $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER)
 

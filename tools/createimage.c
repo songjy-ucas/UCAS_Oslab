@@ -14,11 +14,14 @@
 #define OS_SIZE_LOC (BOOT_LOADER_SIG_OFFSET - 2) // OS 大小信息
 #define TASK_NUM_LOC (BOOT_LOADER_SIG_OFFSET - 4) // 用户程序数量
 #define TASK_INFO_START_LOC (BOOT_LOADER_SIG_OFFSET - 6) // task_info数组的起始扇区
+#define BATCH_INFO_START_LOC (BOOT_LOADER_SIG_OFFSET - 8) // 批处理文件起始扇区
 #define BOOT_LOADER_SIG_1 0x55
 #define BOOT_LOADER_SIG_2 0xaa
 
 // Kernel 和每个用户程序在镜像文件中占用的扇区数
 #define KERNEL_APP_SECTORS 15
+// 为批处理文件分配1个扇区
+#define BATCH_FILE_SECTORS 1 
 
 #define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0)) // 计算字节数对应的扇区数
 
@@ -53,7 +56,7 @@ static uint32_t get_memsz(Elf64_Phdr phdr);
 static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr);
 static void write_padding(FILE *img, int *phyaddr, int new_phyaddr);
 static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
-                           short tasknum, FILE *img);
+                           short tasknum,short batch_file_start_sector, FILE *img);
 static char* get_filename(char* path); // 从路径中提取文件名,因为task4需要通过识别文件名启动用户程序
 
 int main(int argc, char **argv)
@@ -92,6 +95,7 @@ int main(int argc, char **argv)
 static void create_image(int nfiles, char *files[])
 {
     int tasknum = nfiles - 2;
+    short batch_file_start_sector = 0;
     int nbytes_kernel = 0; // kernel 占用的字节数
     int phyaddr = 0; // 物理地址偏移量，表示已经写入镜像文件的字节数
     FILE *fp = NULL, *img = NULL;
@@ -161,8 +165,22 @@ static void create_image(int nfiles, char *files[])
     fwrite(taskinfo, sizeof(task_info_t), tasknum, img);
     phyaddr += sizeof(task_info_t) * tasknum;
 
-    // 6. 调用 write_img_info 写入元信息
-    write_img_info(nbytes_kernel, taskinfo, tasknum, img);
+    // 6. 为批处理文件预留空间
+    //    首先，填充到下一个扇区边界
+    next_sector_addr = NBYTES2SEC(phyaddr) * SECTOR_SIZE;
+    write_padding(img, &phyaddr, next_sector_addr);
+    //    此时 phyaddr 已经对齐到扇区边界，这个位置就是批处理文件的起始位置
+    batch_file_start_sector = (short)(phyaddr / SECTOR_SIZE);
+    //    然后，写入 BATCH_FILE_SECTORS 个空扇区作为批处理文件的初始内容
+    int batch_file_bytes = BATCH_FILE_SECTORS * SECTOR_SIZE;
+    for (int i = 0; i < batch_file_bytes; i++) {
+        fputc(0, img);
+        phyaddr++;
+    }
+    printf("Reserved %d sector(s) for batch file.\n", BATCH_FILE_SECTORS);
+
+    // 7. 调用 write_img_info 写入元信息
+    write_img_info(nbytes_kernel, taskinfo, tasknum, batch_file_start_sector, img);
 
     fclose(img);
 
@@ -301,7 +319,7 @@ static char* get_filename(char* path) {
 }
 
 static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
-                           short tasknum, FILE * img)
+                           short tasknum,short batch_file_start_sector,FILE * img)
 {
     // TODO: [p1-task3] & [p1-task4] write image info to some certain places
     // NOTE: os size, infomation about app-info sector(s) ...
@@ -320,10 +338,14 @@ static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
     fputc(BOOT_LOADER_SIG_1, img);
     fputc(BOOT_LOADER_SIG_2, img);
 
-    // TASK4: 写入 task_info 数组的起始扇区(使用全局变量) 
+    // 4: 写入 task_info 数组的起始扇区(使用全局变量) 
     fseek(img, TASK_INFO_START_LOC, SEEK_SET);
     short task_info_start_sector = (short)(g_task_info_offset / SECTOR_SIZE);
     fwrite(&task_info_start_sector, sizeof(short), 1, img);
+
+    // 5. 写入批处理文件的起始扇区
+    fseek(img, BATCH_INFO_START_LOC, SEEK_SET);
+    fwrite(&batch_file_start_sector, sizeof(short), 1, img);
 }
 
 /* print an error message and exit */

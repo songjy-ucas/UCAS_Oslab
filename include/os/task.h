@@ -7,6 +7,7 @@
 #define TASK_MAXNUM      16
 #define TASK_SIZE        0x10000
 #define TASK_NAME_LEN    32 // 定义任务名的最大长度
+#define SHARED_MEM_PA    0x5f000010 // 共享内存地址
 
 #define SECTOR_SIZE 512
 #define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0))

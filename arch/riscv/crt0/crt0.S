@@ -47,11 +47,11 @@ bss_clear_done:
     ret
 
     /************************************************************/
-	/* Do not touch this comment. Reserved for future projects. */
-	/************************************************************/
-# while(1) loop, unreachable here
-# loop:
-#    wfi
-#    j loop
+    /* Do not touch this comment. Reserved for future projects. */
+    /************************************************************/
+// while(1) loop, unreachable here
+loop:
+    wfi
+    j loop
 
 END(_start)

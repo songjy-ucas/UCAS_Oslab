@@ -280,7 +280,6 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
     
     // Init jump table provided by kernel and bios(ΦωΦ)
     init_jmptab();
-    bios_putstr("test\n\r");
     // Init task information (〃'▽'〃)
     init_task_info(num_tasks, task_info_start_sector);
 
@@ -289,10 +288,8 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
 
     // Init Process Control Blocks |•'-'•) ✧
     init_pcb();
-    bios_putstr("test\n\r");
     // Init screen (QAQ)
     init_screen();
-    bios_putstr("test\n\r");
     printk("> [INIT] SCREEN initialization succeeded.\n");     
     printk("> [INIT] PCB initialization succeeded.\n");
 
@@ -310,6 +307,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
     // Init system call table (0_0)
     init_syscall();
     printk("> [INIT] System call initialized successfully.\n");
+    init_screen();
 
     // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
     // NOTE: The function of sstatus.sie is different from sie's
@@ -320,7 +318,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
 
  while (1)
     {
-        bios_putstr("Songjunyi's OS --enter 'help' for more> "); // 命令行提示符
+        printk("Songjunyi's OS --enter 'help' for more> "); // 命令行提示符
 
         // 每次输入前，重置历史指针到最新位置
         history_current = history_count;
@@ -340,6 +338,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
             bios_putstr("  run - Ready to Load and run the specified task\n\r");
             bios_putstr("  mkbatch - Create a batch job file\n\r");
             bios_putstr("  execbatch - Execute the batch job\n\r");
+            bios_putstr("  processrun - Run tasks in multi-process scheduling mode\n\r");
             continue;
         } 
         else if (strcmp(user_buffer, "list") == 0) {
@@ -476,6 +475,63 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
                 current_task_name += strlen(current_task_name) + 1;
             }
             bios_putstr("\n\rBatch execution finished.\n\r");
+            continue;
+        }
+        else if (strcmp(user_buffer, "processrun") == 0) {
+            bios_putstr("Entering process scheduling mode.\n\r");
+            bios_putstr("Please enter task names (space-separated): ");
+            
+            // 使用 task_list_buffer 来获取用户输入的一整行任务名
+            get_str(task_list_buffer, sizeof(task_list_buffer));
+
+            if (task_list_buffer[0] == '\0') {
+                bios_putstr("Process creation cancelled.\n\r");
+                continue;
+            }
+            
+            char* current_task_ptr = task_list_buffer;
+            int processes_created = 0;
+
+            // 解析字符串，为每个任务名创建进程
+            while (*current_task_ptr != '\0') {
+                // 1. 跳过前导空格
+                while (*current_task_ptr == ' ') {
+                    current_task_ptr++;
+                }
+                if (*current_task_ptr == '\0') {
+                    break; // 字符串末尾
+                }
+
+                // 2. 找到当前任务名的结尾 (空格或字符串结束符)
+                char* task_end_ptr = current_task_ptr;
+                while (*task_end_ptr != ' ' && *task_end_ptr != '\0') {
+                    task_end_ptr++;
+                }
+
+                // 3. 临时截断字符串，以形成一个单独的任务名
+                char original_char = *task_end_ptr;
+                *task_end_ptr = '\0';
+                
+                // 4. 调用 create_process 创建进程
+                if (create_process(current_task_ptr)) {
+                    processes_created++;
+                }
+                
+                // 5. 恢复原始字符，以便继续解析
+                *task_end_ptr = original_char;
+                
+                // 6. 移动指针到下一个任务名或字符串末尾
+                current_task_ptr = task_end_ptr;
+            }
+
+            // 如果至少成功创建了一个进程，则启动调度器
+            if (processes_created > 0) {
+                bios_putstr("All specified tasks are ready. Starting scheduler...\n\r");
+                init_screen(); // 先清屏
+                do_scheduler();
+            } else {
+                bios_putstr("No valid processes were created.\n\r");
+            }
             continue;
         }
         else {

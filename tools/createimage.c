@@ -19,7 +19,7 @@
 #define BOOT_LOADER_SIG_2 0xaa
 
 // Kernel 和每个用户程序在镜像文件中占用的扇区数
-#define KERNEL_APP_SECTORS 15
+#define KERNEL_APP_SECTORS 50
 // 为批处理文件分配1个扇区
 #define BATCH_FILE_SECTORS 1 
 
@@ -55,7 +55,8 @@ static uint32_t get_filesz(Elf64_Phdr phdr);
 static uint32_t get_memsz(Elf64_Phdr phdr);
 static void write_segment(Elf64_Phdr phdr, FILE *fp, FILE *img, int *phyaddr);
 static void write_padding(FILE *img, int *phyaddr, int new_phyaddr);
-static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
+// 修改函数原型以接收动态计算的内核扇区数
+static void write_img_info(short kernel_sectors, task_info_t *taskinfo,
                            short tasknum,short batch_file_start_sector, FILE *img);
 static char* get_filename(char* path); // 从路径中提取文件名,因为task4需要通过识别文件名启动用户程序
 
@@ -96,7 +97,6 @@ static void create_image(int nfiles, char *files[])
 {
     int tasknum = nfiles - 2;
     short batch_file_start_sector = 0;
-    int nbytes_kernel = 0; // kernel 占用的字节数
     int phyaddr = 0; // 物理地址偏移量，表示已经写入镜像文件的字节数
     FILE *fp = NULL, *img = NULL;
     Elf64_Ehdr ehdr;
@@ -106,7 +106,7 @@ static void create_image(int nfiles, char *files[])
     img = fopen(IMAGE_FILE, "w");
     assert(img != NULL);
     
- // 1. 处理 bootblock (files[0])
+    // 1. 处理 bootblock (files[0])
     fp = fopen(files[0], "r");
     assert(fp != NULL);
     read_ehdr(&ehdr, fp);
@@ -118,19 +118,29 @@ static void create_image(int nfiles, char *files[])
     fclose(fp);
 
     // 2. 处理 kernel (files[1])
+    int kernel_start_phyaddr = phyaddr; // 记录内核开始写入时的地址
     fp = fopen(files[1], "r");
     assert(fp != NULL);
     read_ehdr(&ehdr, fp);
     for (int ph = 0; ph < ehdr.e_phnum; ph++) {
         read_phdr(&phdr, fp, ph, ehdr);
         if (phdr.p_type == PT_LOAD) {
-            nbytes_kernel += phdr.p_filesz; // 正确计算内核字节数
             write_segment(phdr, fp, img, &phyaddr);
         }
     }
     fclose(fp);
+    
+    // 动态计算内核大小并进行扇区对齐填充
+    int nbytes_kernel = phyaddr - kernel_start_phyaddr;
+    short kernel_sectors = (short)NBYTES2SEC(nbytes_kernel);
+    printf("Kernel size: %d bytes, occupying %d sectors.\n", nbytes_kernel, kernel_sectors);
+    
+    // 对内核末尾进行填充，确保下一个文件从扇区边界开始
+    int kernel_end_aligned = NBYTES2SEC(phyaddr) * SECTOR_SIZE;
+    write_padding(img, &phyaddr, kernel_end_aligned);
 
-// 3. 依次写入所有 user apps, 同时在内存中构建好 taskinfo 数组
+
+    // 3. 依次写入所有 user apps, 同时在内存中构建好 taskinfo 数组
     for (int i = 0; i < tasknum; ++i) {
         char* filename = files[i + 2];
         int task_start_addr = phyaddr; // app 的 offset 就是当前文件指针的位置
@@ -180,7 +190,7 @@ static void create_image(int nfiles, char *files[])
     printf("Reserved %d sector(s) for batch file.\n", BATCH_FILE_SECTORS);
 
     // 7. 调用 write_img_info 写入元信息
-    write_img_info(nbytes_kernel, taskinfo, tasknum, batch_file_start_sector, img);
+    write_img_info(kernel_sectors, taskinfo, tasknum, batch_file_start_sector, img);
 
     fclose(img);
 
@@ -318,15 +328,14 @@ static char* get_filename(char* path) {
     return (s == NULL) ? path : s + 1;
 }
 
-static void write_img_info(int nbytes_kernel, task_info_t *taskinfo,
+static void write_img_info(short kernel_sectors, task_info_t *taskinfo,
                            short tasknum,short batch_file_start_sector,FILE * img)
 {
     // TODO: [p1-task3] & [p1-task4] write image info to some certain places
     // NOTE: os size, infomation about app-info sector(s) ...
     
-    // 1. 写入 Kernel 占用的扇区数 (固定为 KERNEL_APP_SECTORS)
+    // 1. 写入 Kernel 占用的扇区数 (动态计算的值)
     fseek(img, OS_SIZE_LOC, SEEK_SET);
-    short kernel_sectors = KERNEL_APP_SECTORS;
     fwrite(&kernel_sectors, sizeof(short), 1, img);
 
     // 2. 写入用户程序的数量 (总文件数 - 2: bootblock和kernel)

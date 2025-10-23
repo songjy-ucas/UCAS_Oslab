@@ -63,7 +63,7 @@ static void init_jmptab(void)
     jmptab[MUTEX_INIT]      = (long (*)())do_mutex_lock_init;
     jmptab[MUTEX_ACQ]       = (long (*)())do_mutex_lock_acquire;
     jmptab[MUTEX_RELEASE]   = (long (*)())do_mutex_lock_release;
-
+    jmptab[REFLUSH]         = (long (*)())screen_reflush;
     // TODO: [p2-task1] (S-core) initialize system call table.
 
 }
@@ -192,15 +192,77 @@ static void init_pcb_stack(
     switchto_context_t *pt_switchto =
         (switchto_context_t *)((ptr_t)pt_regs - sizeof(switchto_context_t));
 
+    memset(pt_switchto, 0, sizeof(switchto_context_t));
+    pt_switchto->regs[0] = entry_point; // ra = entry_point
+    pt_switchto->regs[1] = kernel_stack; // sp = kernel_stack_top
+    pcb->kernel_sp = (reg_t)pt_switchto;
+    pcb->user_sp = user_stack;        
 }
 
 static void init_pcb(void)
 {
     /* TODO: [p2-task1] load needed tasks and init their corresponding PCB */
 
+    /* 1. 初始化就绪队列 */
+    list_init(&ready_queue);
+
+    /* 2. 初始化 pcb 数组，将其所有槽位标记为未使用，
+          这个数组是专门给用户进程 (PID >= 1) 准备的。 */
+    for (int i = 0; i < NUM_MAX_TASK; i++) {
+        pcb[i].status = TASK_UNUSED; // 或 TASK_EXITED
+    }
+
+    /* 3. 将 current_running 指向全局定义好的 pid0_pcb。
+          系统启动时，内核的 main 函数本身就是代表 pid0_pcb 在运行。*/
+    current_running = &pid0_pcb;
 
     /* TODO: [p2-task1] remember to initialize 'current_running' */
 
+}
+
+// 辅助函数：给需要运行的用户程序处理创建一个新进程所需的全部逻辑，包括查找PCB、加载、分配资源和初始化。
+static int create_process(const char *task_name)
+{
+    // 1. 查找空闲PCB
+    int pcb_idx = -1;
+    for (int i = 1; i < NUM_MAX_TASK; i++) {
+        if (pcb[i].status == TASK_UNUSED) {
+            pcb_idx = i;
+            break;
+        }
+    }
+
+    if (pcb_idx == -1) {
+        printk("Error: No free PCB available.\n\r");
+        return 0; // 失败
+    }
+
+    // 2. 加载任务镜像
+    uint64_t entry_point = load_task_img(task_name);
+    if (entry_point == 0) {
+        // load_task_img 内部会打印找不到任务
+        return 0; // 失败
+    }
+
+    // 3. 分配内核栈
+    ptr_t kernel_stack = allocKernelPage(1);
+    if (!kernel_stack) {
+        printk("Error: Memory allocation failed for kernel stack.\n\r");
+        return 0; // 失败
+    }
+
+    // 4. 初始化PCB并伪造现场
+    pcb[pcb_idx].pid = process_id++;
+    pcb[pcb_idx].status = TASK_READY;
+    strcpy(pcb[pcb_idx].name, task_name);
+    init_pcb_stack(kernel_stack + PAGE_SIZE, 0, entry_point, &pcb[pcb_idx]);
+
+    // 5. 加入就绪队列
+    list_add_tail(&pcb[pcb_idx].list, &ready_queue);
+
+    printk("Task '%s' created, pid = %d, using pcb[%d].\n\r", pcb[pcb_idx].name, pcb[pcb_idx].pid, pcb_idx);
+    
+    return 1; // 成功
 }
 
 static void init_syscall(void)
@@ -214,18 +276,24 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
     // 读取传递过来的参数
     short num_tasks = (short)argc;
     short task_info_start_sector = (short)(uintptr_t)argv;
-
+    
+    
     // Init jump table provided by kernel and bios(ΦωΦ)
     init_jmptab();
-
+    bios_putstr("test\n\r");
     // Init task information (〃'▽'〃)
     init_task_info(num_tasks, task_info_start_sector);
 
     // 读取0f6处的批处理文件起始扇区号
     batch_file_start_sector = *((short *)BATCH_INFO_START_ADDR);
-    
+
     // Init Process Control Blocks |•'-'•) ✧
     init_pcb();
+    bios_putstr("test\n\r");
+    // Init screen (QAQ)
+    init_screen();
+    bios_putstr("test\n\r");
+    printk("> [INIT] SCREEN initialization succeeded.\n");     
     printk("> [INIT] PCB initialization succeeded.\n");
 
     // Read CPU frequency (｡•ᴗ-)_
@@ -242,10 +310,6 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
     // Init system call table (0_0)
     init_syscall();
     printk("> [INIT] System call initialized successfully.\n");
-
-    // Init screen (QAQ)
-    init_screen();
-    printk("> [INIT] SCREEN initialization succeeded.\n");
 
     // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
     // NOTE: The function of sstatus.sie is different from sie's

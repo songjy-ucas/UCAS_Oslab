@@ -32,9 +32,10 @@
 #include <type.h>
 #include <os/list.h>
 
-#define NUM_MAX_TASK 16
+#define NUM_MAX_TASK 16 
+#define TASK_NAME_LEN 32 // 定义任务名的最大长度
 
-/* used to save register infomation */
+/* used to save register infomation */ // 中断保存
 typedef struct regs_context
 {
     /* Saved main processor registers.*/
@@ -47,7 +48,7 @@ typedef struct regs_context
     reg_t scause;
 } regs_context_t;
 
-/* used to save register infomation in switch_to */
+/* used to save register infomation in switch_to */ //调用保存
 typedef struct switchto_context
 {
     /* Callee saved registers.*/
@@ -58,7 +59,8 @@ typedef enum {
     TASK_BLOCKED,
     TASK_RUNNING,
     TASK_READY,
-    TASK_EXITED,
+    TASK_EXITED, // 进程结束，那么这个PCB变为可使用
+    TASK_UNUSED, // 已经分配给一个进程但是未使用，这个PCB就不能被别的使用了
 } task_status_t;
 
 /* Process Control Block */
@@ -77,6 +79,7 @@ typedef struct pcb
 
     /* BLOCK | READY | RUNNING */
     task_status_t status;
+    char name[TASK_NAME_LEN]; // 进程名
 
     /* cursor position */
     int cursor_x;

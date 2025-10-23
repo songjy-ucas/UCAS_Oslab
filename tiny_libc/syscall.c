@@ -17,43 +17,49 @@ static long invoke_syscall(long sysno, long arg0, long arg1, long arg2,
 void sys_yield(void)
 {
     /* TODO: [p2-task1] call call_jmptab to implement sys_yield */
+    call_jmptab(YIELD, 0, 0, 0, 0, 0);
     /* TODO: [p2-task3] call invoke_syscall to implement sys_yield */
 }
 
 void sys_move_cursor(int x, int y)
 {
     /* TODO: [p2-task1] call call_jmptab to implement sys_move_cursor */
+    call_jmptab(MOVE_CURSOR,(long)x,(long)y,0,0,0);
     /* TODO: [p2-task3] call invoke_syscall to implement sys_move_cursor */
 }
 
 void sys_write(char *buff)
 {
     /* TODO: [p2-task1] call call_jmptab to implement sys_write */
+    call_jmptab(PRINT,(long)buff,0,0,0,0);
     /* TODO: [p2-task3] call invoke_syscall to implement sys_write */
 }
 
 void sys_reflush(void)
 {
     /* TODO: [p2-task1] call call_jmptab to implement sys_reflush */
+    call_jmptab(REFLUSH,0,0,0,0,0);
     /* TODO: [p2-task3] call invoke_syscall to implement sys_reflush */
 }
 
 int sys_mutex_init(int key)
 {
     /* TODO: [p2-task2] call call_jmptab to implement sys_mutex_init */
+    return call_jmptab(MUTEX_INIT, (long)key, 0, 0, 0, 0);
     /* TODO: [p2-task3] call invoke_syscall to implement sys_mutex_init */
-    return 0;
 }
 
 void sys_mutex_acquire(int mutex_idx)
 {
     /* TODO: [p2-task2] call call_jmptab to implement sys_mutex_acquire */
+    call_jmptab(MUTEX_ACQ, (long)mutex_idx, 0, 0, 0, 0);
     /* TODO: [p2-task3] call invoke_syscall to implement sys_mutex_acquire */
 }
 
 void sys_mutex_release(int mutex_idx)
 {
     /* TODO: [p2-task2] call call_jmptab to implement sys_mutex_release */
+    call_jmptab(MUTEX_RELEASE, (long)mutex_idx, 0, 0, 0, 0);
     /* TODO: [p2-task3] call invoke_syscall to implement sys_mutex_release */
 }
 
@@ -73,6 +79,13 @@ void sys_sleep(uint32_t time)
 {
     /* TODO: [p2-task3] call invoke_syscall to implement sys_sleep */
 }
+
+void sys_set_sche_workload(int workload)
+{
+   //TODO 
+}
+
+
 
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */

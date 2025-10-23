@@ -12,7 +12,9 @@ const ptr_t pid0_stack = INIT_KERNEL_STACK + PAGE_SIZE;
 pcb_t pid0_pcb = {
     .pid = 0,
     .kernel_sp = (ptr_t)pid0_stack,
-    .user_sp = (ptr_t)pid0_stack
+    .user_sp = (ptr_t)pid0_stack,
+    .status = TASK_RUNNING,
+    .list = {&(pid0_pcb.list), &(pid0_pcb.list)} // 独立于ready_quene之外，自己指向自己，不入队列
 };
 
 LIST_HEAD(ready_queue);
@@ -30,9 +32,31 @@ void do_scheduler(void)
     /************************************************************/
 
     // TODO: [p2-task1] Modify the current_running pointer.
+    pcb_t *prev_task = current_running;
+    pcb_t *next_task ;
+    
+    if (list_is_empty(&ready_queue)) {
+        return;
+    }
+    
+    next_task = list_entry(ready_queue.next, pcb_t, list);
+    list_del(ready_queue.next); // 从队列中移除
 
+    if (prev_task->pid != 0) {
+        if (prev_task->status == TASK_RUNNING) {
+            // 任务是主动 yield 或被抢占的，状态仍然是 RUNNING
+            // 把它变回 READY 并放回就绪队列尾部
+            prev_task->status = TASK_READY;
+            list_add_tail(&prev_task->list, &ready_queue);
+        }
+    }
+
+    //  更新下一个任务的状态并切换
+    next_task->status = TASK_RUNNING;
+    current_running = next_task;
 
     // TODO: [p2-task1] switch_to current_running
+    switch_to(prev_task, next_task);
 
 }
 

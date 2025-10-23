@@ -51,5 +51,63 @@ typedef list_node_t list_head;
 #define LIST_HEAD(name) struct list_node name = {&(name), &(name)}
 
 /* TODO: [p2-task1] implement your own list API */
+// Initializes a list head.
+static inline void list_init(list_head *list)
+{
+    list->next = list;
+    list->prev = list;
+}
+
+// Inserts a new node between two known consecutive nodes.
+static inline void __list_add(struct list_node *new,
+                              struct list_node *prev,
+                              struct list_node *next)
+{
+    next->prev = new;
+    new->next = next;
+    new->prev = prev;
+    prev->next = new;
+}
+
+// Adds a new node at the head of the list.
+static inline void list_add(struct list_node *new, list_head *head)
+{
+    __list_add(new, head, head->next);
+}
+
+// Adds a new node at the tail of the list.
+static inline void list_add_tail(struct list_node *new, list_head *head)
+{
+    __list_add(new, head->prev, head);
+}
+
+// Deletes a node from the list.
+static inline void __list_del(struct list_node *prev, struct list_node *next)
+{
+    next->prev = prev;
+    prev->next = next;
+}
+
+static inline void list_del(struct list_node *entry)
+{
+    __list_del(entry->prev, entry->next);
+    entry->next = entry;
+    entry->prev = entry;
+    // Optional: poison the pointers to catch use-after-free bugs
+    // entry->next = entry->prev = NULL; 
+}
+
+// Checks if the list is empty.
+static inline int list_is_empty(const list_head *head)
+{
+    return head->next == head;
+}
+
+// Gets the struct for this entry.
+// ptr: the &struct list_head pointer.
+// type: the type of the struct this is embedded in.
+// member: the name of the list_head within the struct.
+#define list_entry(ptr, type, member) \
+    ((type *)((char *)(ptr) - (unsigned long)(&((type *)0)->member)))
 
 #endif

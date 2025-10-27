@@ -5,6 +5,7 @@
 
 #include <type.h>
 
+// 原子地将 mem_addr 处的32位旧值读出并返回，同时将新值 val 写入该地址。
 static inline uint32_t atomic_swap(uint32_t val, ptr_t mem_addr)
 {
     uint32_t ret;
@@ -16,6 +17,7 @@ static inline uint32_t atomic_swap(uint32_t val, ptr_t mem_addr)
     return ret;
 }
 
+// 原子地将 mem_addr 处的64位旧值读出并返回，同时将新值 val 写入该地址。
 static inline uint64_t atomic_swap_d(uint64_t val, ptr_t mem_addr)
 {
     uint64_t ret;
@@ -27,6 +29,7 @@ static inline uint64_t atomic_swap_d(uint64_t val, ptr_t mem_addr)
     return ret;
 }
 
+//原子地比较 mem_addr 处的值与 old_val，若相等则更新为 new_val，无论如何都返回 mem_addr 处的原始值。
 /* if *mem_addr == old_val, then *mem_addr = new_val, else return *mem_addr */
 static inline uint32_t atomic_cmpxchg(uint32_t old_val, uint32_t new_val, ptr_t mem_addr)
 {
@@ -45,6 +48,7 @@ static inline uint32_t atomic_cmpxchg(uint32_t old_val, uint32_t new_val, ptr_t 
     return ret;
 }
 
+//原子地比较 mem_addr 处的值与 old_val，若相等则将该地址的64位值更新为 new_val，无论如何都返回 mem_addr 处的原始值。
 /* if *mem_addr == old_val, then *mem_addr = new_val, else return *mem_addr */
 static inline uint64_t atomic_cmpxchg_d(uint64_t old_val, uint64_t new_val, ptr_t mem_addr)
 {

@@ -19,7 +19,7 @@
 #define BOOT_LOADER_SIG_2 0xaa
 
 // Kernel 和每个用户程序在镜像文件中占用的扇区数
-#define KERNEL_APP_SECTORS 50
+#define KERNEL_APP_SECTORS 15 // 这里在prj2以后一定要放弃使用，在prj2以后内核很大，远超15扇区，所以我修改成了使用nbytes_kernel去动态获取内核大小！！！！！
 // 为批处理文件分配1个扇区
 #define BATCH_FILE_SECTORS 1 
 
@@ -370,3 +370,4 @@ static void error(char *fmt, ...)
     }
     exit(EXIT_FAILURE);
 }
+  

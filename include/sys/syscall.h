@@ -34,7 +34,9 @@
 #define NUM_SYSCALLS 96
 
 /* syscall function pointer */
-extern long (*syscall[NUM_SYSCALLS])();
+extern long (*syscall[NUM_SYSCALLS])(); // 函数指针数组
+// 注意：() 这种写法是一种“旧式”的C语言函数声明风格，它并不意味着函数没有参数，而是意味着“这个函数接受数量不确定、类型也不确定的参数”。
+
 extern void handle_syscall(regs_context_t *regs, uint64_t stval, uint64_t scause);
 
 #endif

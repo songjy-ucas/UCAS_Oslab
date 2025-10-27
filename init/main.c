@@ -289,7 +289,6 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
     // Init Process Control Blocks |•'-'•) ✧
     init_pcb();
     // Init screen (QAQ)
-    init_screen();
     printk("> [INIT] SCREEN initialization succeeded.\n");     
     printk("> [INIT] PCB initialization succeeded.\n");
 
@@ -318,7 +317,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
 
  while (1)
     {
-        printk("Songjunyi's OS --enter 'help' for more> "); // 命令行提示符
+        bios_putstr("Songjunyi's OS --enter 'help' for more> "); // 命令行提示符
 
         // 每次输入前，重置历史指针到最新位置
         history_current = history_count;
@@ -477,7 +476,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
             bios_putstr("\n\rBatch execution finished.\n\r");
             continue;
         }
-        else if (strcmp(user_buffer, "processrun") == 0) {
+        else if (strcmp(user_buffer, "1") == 0) {
             bios_putstr("Entering process scheduling mode.\n\r");
             bios_putstr("Please enter task names (space-separated): ");
             

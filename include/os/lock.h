@@ -37,15 +37,15 @@ typedef enum {
     LOCKED,
 } lock_status_t;
 
-typedef struct spin_lock
+typedef struct spin_lock // 自旋锁
 {
     volatile lock_status_t status;
 } spin_lock_t;
 
-typedef struct mutex_lock
+typedef struct mutex_lock // 互斥锁
 {
-    spin_lock_t lock;
-    list_head block_queue;
+    spin_lock_t lock; // 锁中锁！这里的目的是用一个更底层的、轻量级的自旋锁来保护对 mutex_lock_t 结构体自身的访问，保证修改互斥锁自身状态时是原子的
+    list_head block_queue; // 为每一个锁建立专属它的阻塞队列！！！阻塞队列不是全局的
     int key;
 } mutex_lock_t;
 

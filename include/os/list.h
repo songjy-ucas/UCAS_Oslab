@@ -103,7 +103,7 @@ static inline int list_is_empty(const list_head *head)
     return head->next == head;
 }
 
-// Gets the struct for this entry.
+// Gets the struct for this entry. 根据结构体中某个成员的地址，反向计算出这个结构体本身的起始地址。
 // ptr: the &struct list_head pointer.
 // type: the type of the struct this is embedded in.
 // member: the name of the list_head within the struct.

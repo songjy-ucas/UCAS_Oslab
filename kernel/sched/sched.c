@@ -34,13 +34,6 @@ void do_scheduler(void)
     // TODO: [p2-task1] Modify the current_running pointer.
     pcb_t *prev_task = current_running;
     pcb_t *next_task ;
-    
-    if (list_is_empty(&ready_queue)) {
-        return;
-    }
-    
-    next_task = list_entry(ready_queue.next, pcb_t, list);
-    list_del(ready_queue.next); // 从队列中移除
 
     if (prev_task->pid != 0) {
         if (prev_task->status == TASK_RUNNING) {
@@ -50,6 +43,9 @@ void do_scheduler(void)
             list_add_tail(&prev_task->list, &ready_queue);
         }
     }
+    
+    next_task = list_entry(ready_queue.next, pcb_t, list);
+    list_del(ready_queue.next); // 从队列中移除 --------- debug经历：一定要先把RUNNING的存回ready_queue，再取队列第一个，否则单一用户程序运行时会出错   
 
     //  更新下一个任务的状态并切换
     next_task->status = TASK_RUNNING;
@@ -72,9 +68,29 @@ void do_sleep(uint32_t sleep_time)
 void do_block(list_node_t *pcb_node, list_head *queue)
 {
     // TODO: [p2-task2] block the pcb task into the block queue
+    
+    // 1. 获取 pcb 指针并修改状态为 BLOCKED
+    pcb_t *blocked_pcb = list_entry(pcb_node, pcb_t, list);
+    blocked_pcb->status = TASK_BLOCKED;
+
+    // 2. 将 pcb_node 添加到指定的阻塞队列 `queue` 的尾部
+    //    不用 list_del，因为 pcb_node 来自一个不在任何队列中的 RUNNING 进程。
+    list_add_tail(pcb_node, queue);
+
+    // 3. 立即调用调度器，切换到另一个进程
+    do_scheduler();
 }
 
 void do_unblock(list_node_t *pcb_node)
 {
     // TODO: [p2-task2] unblock the `pcb` from the block queue
+    // 1. 获取 pcb 指针并修改状态为 READY
+    pcb_t *pcb_to_wake = list_entry(pcb_node, pcb_t, list);
+    pcb_to_wake->status = TASK_READY;
+
+    // 2. 将 pcb_node 从它当前所在的阻塞队列中移除
+    list_del(pcb_node);
+
+    // 3. 将 pcb_node 添加到就绪队列 `ready_queue` 的尾部
+    list_add_tail(pcb_node, &ready_queue);
 }

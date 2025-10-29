@@ -172,7 +172,7 @@ static void add_to_history(const char *command)
 }
 
 /************************************************************/
-static void init_pcb_stack(
+static void init_pcb_stack( // 伪造现场
     ptr_t kernel_stack, ptr_t user_stack, ptr_t entry_point,
     pcb_t *pcb)
 {
@@ -183,7 +183,11 @@ static void init_pcb_stack(
       */
     regs_context_t *pt_regs =
         (regs_context_t *)(kernel_stack - sizeof(regs_context_t));
-
+    pt_regs->regs[1] = (uint64_t) entry_point;           // ra,用于进入用户程序
+    pt_regs->regs[2] = user_stack;                      // sp
+    pt_regs->regs[4] = (uint64_t)pcb;                    //设置恢复后的 tp 寄存器，使其指向当前 PCB
+    pt_regs->sstatus = SR_SPIE;  // SPIE set to 1
+    pt_regs->sepc = (uint64_t)entry_point;
 
     /* TODO: [p2-task1] set sp to simulate just returning from switch_to
      * NOTE: you should prepare a stack, and push some values to
@@ -193,7 +197,7 @@ static void init_pcb_stack(
         (switchto_context_t *)((ptr_t)pt_regs - sizeof(switchto_context_t));
 
     memset(pt_switchto, 0, sizeof(switchto_context_t));
-    pt_switchto->regs[0] = entry_point; // ra = entry_point
+    pt_switchto->regs[0] = (uint64_t)ret_from_exception; // ra = entry_point ----- 这是用于task1，2的进入用户程序入口的，之后用户态和内核态分离后应该进入ret_from_exception！
     pt_switchto->regs[1] = kernel_stack; // sp = kernel_stack_top
     pcb->kernel_sp = (reg_t)pt_switchto;
     pcb->user_sp = user_stack;        
@@ -245,9 +249,15 @@ static int create_process(const char *task_name)
     }
 
     // 3. 分配内核栈
-    ptr_t kernel_stack = allocKernelPage(1);
-    if (!kernel_stack) {
+    ptr_t kernel_stack_base = allocKernelPage(1);
+    if (!kernel_stack_base) {
         printk("Error: Memory allocation failed for kernel stack.\n\r");
+        return 0; // 失败
+    }
+
+    ptr_t user_stack_base = allocUserPage(1);
+    if (!user_stack_base) {
+        printk("Error: Memory allocation failed for user stack.\n\r");
         return 0; // 失败
     }
 
@@ -255,7 +265,7 @@ static int create_process(const char *task_name)
     pcb[pcb_idx].pid = process_id++;
     pcb[pcb_idx].status = TASK_READY;
     strcpy(pcb[pcb_idx].name, task_name);
-    init_pcb_stack(kernel_stack + PAGE_SIZE, 0, entry_point, &pcb[pcb_idx]);
+    init_pcb_stack(kernel_stack_base + PAGE_SIZE, user_stack_base + PAGE_SIZE, entry_point, &pcb[pcb_idx]);
 
     // 5. 加入就绪队列
     list_add_tail(&pcb[pcb_idx].list, &ready_queue);
@@ -268,6 +278,17 @@ static int create_process(const char *task_name)
 static void init_syscall(void)
 {
     // TODO: [p2-task3] initialize system call table.
+    syscall[SYSCALL_SLEEP]          = (long (*)())do_sleep;
+    syscall[SYSCALL_YIELD]          = (long (*)())do_scheduler;
+    syscall[SYSCALL_WRITE]          = (long (*)())screen_write;
+    syscall[SYSCALL_CURSOR]         = (long (*)())screen_move_cursor;
+    syscall[SYSCALL_REFLUSH]        = (long (*)())screen_reflush;
+    syscall[SYSCALL_GET_TIMEBASE]   = (long (*)())get_time_base;
+    syscall[SYSCALL_GET_TICK]       = (long (*)())get_ticks;
+    syscall[SYSCALL_LOCK_INIT]      = (long (*)())do_mutex_lock_init;
+    syscall[SYSCALL_LOCK_ACQ]       = (long (*)())do_mutex_lock_acquire;
+    syscall[SYSCALL_LOCK_RELEASE]   = (long (*)())do_mutex_lock_release;
+    syscall[SYSCALL_SET_SCHE_WORKLOAD] = (long (*)())do_set_sche_workload;
 }
 /************************************************************/
 

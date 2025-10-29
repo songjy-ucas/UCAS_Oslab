@@ -52,7 +52,7 @@ typedef struct regs_context
 typedef struct switchto_context
 {
     /* Callee saved registers.*/
-    reg_t regs[14];
+    reg_t regs[14]; // sp,ra,s0-s11
 } switchto_context_t;
 
 typedef enum {
@@ -110,6 +110,7 @@ void do_sleep(uint32_t);
 
 void do_block(list_node_t *, list_head *queue);
 void do_unblock(list_node_t *);
+void do_set_sche_workload(int position);
 
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */

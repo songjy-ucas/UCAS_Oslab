@@ -47,7 +47,7 @@ typedef struct list_node
 
 typedef list_node_t list_head;
 
-// LIST_HEAD is used to define the head of a list.
+// LIST_HEAD is used to define the head of a list. 建立双向循环链表头节点
 #define LIST_HEAD(name) struct list_node name = {&(name), &(name)}
 
 /* TODO: [p2-task1] implement your own list API */

@@ -26,7 +26,7 @@ pid_t process_id = 1;
 void do_scheduler(void)
 {
     // TODO: [p2-task3] Check sleep queue to wake up PCBs
-
+    check_sleeping();
     /************************************************************/
     /* Do not touch this comment. Reserved for future projects. */
     /************************************************************/
@@ -61,8 +61,12 @@ void do_sleep(uint32_t sleep_time)
     // TODO: [p2-task3] sleep(seconds)
     // NOTE: you can assume: 1 second = 1 `timebase` ticks
     // 1. block the current_running
+    current_running->status = TASK_BLOCKED;
     // 2. set the wake up time for the blocked task
+    current_running->wakeup_time = get_timer()+sleep_time;
     // 3. reschedule because the current_running is blocked.
+    list_add_tail(&current_running->list,&sleep_queue); // 放入sleep队列
+    do_scheduler();
 }
 
 void do_block(list_node_t *pcb_node, list_head *queue)
@@ -93,4 +97,8 @@ void do_unblock(list_node_t *pcb_node)
 
     // 3. 将 pcb_node 添加到就绪队列 `ready_queue` 的尾部
     list_add_tail(pcb_node, &ready_queue);
+}
+
+void do_set_sche_workload(int position){
+  // TODO:task5
 }

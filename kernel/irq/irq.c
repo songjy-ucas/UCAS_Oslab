@@ -1,3 +1,4 @@
+// 建立C语言层面的分发机制，根据 scause 寄存器的值调用不同的处理函数。
 #include <os/irq.h>
 #include <os/time.h>
 #include <os/sched.h>
@@ -7,30 +8,55 @@
 #include <assert.h>
 #include <screen.h>
 
-handler_t irq_table[IRQC_COUNT];
-handler_t exc_table[EXCC_COUNT];
+handler_t irq_table[IRQC_COUNT]; // 中断处理函数表
+handler_t exc_table[EXCC_COUNT]; // 异常处理函数表
 
-void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
+void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause) // 负责判断陷阱类型并分发给正确的处理函数
 {
     // TODO: [p2-task3] & [p2-task4] interrupt handler.
     // call corresponding handler by the value of `scause`
+    // 通过 scause 的最高位判断是中断(interrupt)还是异常(exception)
+    if (scause & (1UL << 63)) {
+        // Interrupt
+        // 清除最高位，得到中断号
+        uint64_t irq_num = scause & ~(1UL << 63);
+        // 从中断表中调用对应的处理函数
+        irq_table[irq_num](regs, stval, scause);
+    } else {
+        // Exception
+        // scause 的值本身就是异常号，从异常表中调用对应的处理函数,和irq保持一致可以也做一次 & ~(1UL << 63)
+        uint64_t exc_num = scause & ~(1UL << 63);
+        exc_table[exc_num](regs, stval, scause);
+    }
 }
 
-void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
+void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause) // 当计时器硬件触发中断时，该函数会被 interrupt_helper 调用。
 {
     // TODO: [p2-task4] clock interrupt handler.
     // Note: use bios_set_timer to reset the timer and remember to reschedule
 }
 
-void init_exception()
+void init_exception() // 初始化中断和异常处理机制,这个函数在内核启动的早期阶段被调用，用于建立整个陷阱处理的框架。
 {
     /* TODO: [p2-task3] initialize exc_table */
     /* NOTE: handle_syscall, handle_other, etc.*/
+    // handle_other:这是一个通用的、默认的处理函数。它的任务是处理所有没有被专门指定处理函数的异常。会用来打印报错
+    // handle_syscall:处理系统调用
+    exc_table[EXCC_INST_MISALIGNED ] = handle_other;
+    exc_table[EXCC_INST_ACCESS     ] = handle_other;
+    exc_table[EXCC_BREAKPOINT      ] = handle_other;
+    exc_table[EXCC_LOAD_ACCESS     ] = handle_other;
+    exc_table[EXCC_STORE_ACCESS    ] = handle_other;
+    exc_table[EXCC_SYSCALL         ] = handle_syscall;
+    exc_table[EXCC_INST_PAGE_FAULT ] = handle_other;
+    exc_table[EXCC_LOAD_PAGE_FAULT ] = handle_other;
+    exc_table[EXCC_STORE_PAGE_FAULT] = handle_other;   
 
     /* TODO: [p2-task4] initialize irq_table */
     /* NOTE: handle_int, handle_other, etc.*/
 
     /* TODO: [p2-task3] set up the entrypoint of exceptions */
+    setup_exception(); // 调用汇编函数(进入trap.S内的setup_exception)，将 exception_handler_entry 的地址写入 stvec
 }
 
 void handle_other(regs_context_t *regs, uint64_t stval, uint64_t scause)

@@ -91,6 +91,7 @@ void do_mutex_lock_acquire(int mlock_idx) //获取一个互斥锁
 
     // 获取锁失败，说明锁被占用，需要阻塞当前进程，do_block 会将当前进程放入阻塞队列并调度走
     do_block(&current_running->list, &mlocks[mlock_idx].block_queue);
+    do_scheduler(); // 在这里去调度，不要在do_block里面调度，因为do_block不一定是current_running
 }
 
 void do_mutex_lock_release(int mlock_idx) // 释放一个互斥锁

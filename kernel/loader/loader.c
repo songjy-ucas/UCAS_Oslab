@@ -99,5 +99,5 @@ uint64_t load_task_img(const char *taskname)
     memcpy((void*)load_addr, read_buffer + offset_in_buffer, file_size);
 
     // 返回程序的入口点
-    return info->entry_point;
+    return load_addr;
 }

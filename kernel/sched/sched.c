@@ -80,9 +80,6 @@ void do_block(list_node_t *pcb_node, list_head *queue)
     // 2. 将 pcb_node 添加到指定的阻塞队列 `queue` 的尾部
     //    不用 list_del，因为 pcb_node 来自一个不在任何队列中的 RUNNING 进程。
     list_add_tail(pcb_node, queue);
-
-    // 3. 立即调用调度器，切换到另一个进程
-    do_scheduler();
 }
 
 void do_unblock(list_node_t *pcb_node)

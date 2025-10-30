@@ -197,10 +197,9 @@ static void init_pcb_stack( // 伪造现场
         (switchto_context_t *)((ptr_t)pt_regs - sizeof(switchto_context_t));
 
     memset(pt_switchto, 0, sizeof(switchto_context_t));
+    pcb->kernel_sp = (reg_t)pt_switchto;  
     pt_switchto->regs[0] = (uint64_t)ret_from_exception; // ra = entry_point ----- 这是用于task1，2的进入用户程序入口的，之后用户态和内核态分离后应该进入ret_from_exception！
-    pt_switchto->regs[1] = kernel_stack; // sp = kernel_stack_top
-    pcb->kernel_sp = (reg_t)pt_switchto;
-    pcb->user_sp = user_stack;        
+    pt_switchto->regs[1] = pcb->kernel_sp; // sp = kernel_stack_top        
 }
 
 static void init_pcb(void)
@@ -358,7 +357,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
             bios_putstr("  run - Ready to Load and run the specified task\n\r");
             bios_putstr("  mkbatch - Create a batch job file\n\r");
             bios_putstr("  execbatch - Execute the batch job\n\r");
-            bios_putstr("  processrun - Run tasks in multi-process scheduling mode\n\r");
+            bios_putstr("  processrun - Run tasks in multi-process scheduling mode\n\r"); // 测试时这个先用 1
             continue;
         } 
         else if (strcmp(user_buffer, "list") == 0) {
@@ -548,7 +547,8 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
             if (processes_created > 0) {
                 bios_putstr("All specified tasks are ready. Starting scheduler...\n\r");
                 init_screen(); // 先清屏
-                do_scheduler();
+            //  do_scheduler(); // 非抢占式调度
+                enable_preempt(); // 使用时间片抢占式调度
             } else {
                 bios_putstr("No valid processes were created.\n\r");
             }
@@ -615,3 +615,5 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
 
     return 0;
 }
+
+// print1 print2 lock1 lock2 sleep timer fly

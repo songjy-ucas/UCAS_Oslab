@@ -8,6 +8,10 @@ ENTRY(setup_exception)
   la t0, exception_handler_entry
   csrw CSR_STVEC, t0
   /* TODO: [p2-task4] enable interrupts globally */
- 
+  addi    sp, sp, -8
+  sd      ra, 0(sp) # 调用函数前要先保存ra，其他的不用保存，因为enable_interrupt只用了临时寄存器
+  call    enable_interrupt # 打开中断总开关
+  ld      ra, 0(sp)
+  addi    sp, sp, 8  
   ret
 ENDPROC(setup_exception)

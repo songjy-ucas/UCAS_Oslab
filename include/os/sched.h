@@ -35,6 +35,8 @@
 #define NUM_MAX_TASK 16 
 #define TASK_NAME_LEN 32 // 定义任务名的最大长度
 
+extern int num_fly_tasks; // 记录当前参与调度的 fly 任务总数,task5使用
+
 /* used to save register infomation */ // 中断保存
 typedef struct regs_context
 {
@@ -87,7 +89,21 @@ typedef struct pcb
 
     /* time(seconds) to wake up sleeping PCB */
     uint64_t wakeup_time;
+    
+    // task5 use
+    // 从用户程序报告的剩余工作量 (即task5中 fly 程序的 remain_length)
+    int workload;
+    
+    // 当前进程剩余的时间片数量 (tick 的数量)
+    int time_slice;
+    
+    // 标记飞机当前所处的阶段
+    // 0: 飞向检查点 (to checkpoint)
+    // 1: 飞向终点 (to end)
+    int in_checkpoint_phase;
 
+    // 轮次记录
+    int round;
 } pcb_t;
 
 /* ready queue to run */
@@ -110,7 +126,7 @@ void do_sleep(uint32_t);
 
 void do_block(list_node_t *, list_head *queue);
 void do_unblock(list_node_t *);
-void do_set_sche_workload(int position);
+void do_set_sche_workload(int round, int phase, int workload);
 
 /************************************************************/
 /* Do not touch this comment. Reserved for future projects. */

@@ -34,6 +34,20 @@ void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause) // 
 {
     // TODO: [p2-task4] clock interrupt handler.
     // Note: use bios_set_timer to reset the timer and remember to reschedule
+    // 设置下一次中断
+    bios_set_timer(get_ticks() + TIMER_INTERVAL); //下一次查询中断的时间
+
+    // 将当前运行进程的时间片计数器减 1
+    if (current_running->pid != 0) {
+        current_running->time_slice--;
+    }
+
+    // 如果时间片用完，则调用调度器进行轮转
+    if (current_running->time_slice <= 0) {
+        do_scheduler(); 
+    }
+    // printl("%d",current_running->pid);
+    // do_scheduler();
 }
 
 void init_exception() // 初始化中断和异常处理机制,这个函数在内核启动的早期阶段被调用，用于建立整个陷阱处理的框架。
@@ -42,6 +56,8 @@ void init_exception() // 初始化中断和异常处理机制,这个函数在内
     /* NOTE: handle_syscall, handle_other, etc.*/
     // handle_other:这是一个通用的、默认的处理函数。它的任务是处理所有没有被专门指定处理函数的异常。会用来打印报错
     // handle_syscall:处理系统调用
+
+    // 异常初始化
     exc_table[EXCC_INST_MISALIGNED ] = handle_other;
     exc_table[EXCC_INST_ACCESS     ] = handle_other;
     exc_table[EXCC_BREAKPOINT      ] = handle_other;
@@ -54,7 +70,16 @@ void init_exception() // 初始化中断和异常处理机制,这个函数在内
 
     /* TODO: [p2-task4] initialize irq_table */
     /* NOTE: handle_int, handle_other, etc.*/
-
+    // 中断初始化
+    irq_table[IRQC_U_SOFT ] = handle_other;
+    irq_table[IRQC_S_SOFT ] = handle_other;
+    irq_table[IRQC_M_SOFT ] = handle_other;
+    irq_table[IRQC_U_TIMER] = handle_other;
+    irq_table[IRQC_S_TIMER] = handle_irq_timer;
+    irq_table[IRQC_M_TIMER] = handle_other;
+    irq_table[IRQC_U_EXT  ] = handle_other;
+    irq_table[IRQC_S_EXT  ] = handle_other;
+    irq_table[IRQC_M_EXT  ] = handle_other;
     /* TODO: [p2-task3] set up the entrypoint of exceptions */
     setup_exception(); // 调用汇编函数(进入trap.S内的setup_exception)，将 exception_handler_entry 的地址写入 stvec
 }

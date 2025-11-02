@@ -40,6 +40,8 @@ char history_buffer[HISTORY_MAX][CMD_MAX_LEN];
 int history_count = 0;   // 当前存储的历史命令数量
 int history_current = 0; // 当前通过箭头选择的历史命令索引
 
+int num_fly_tasks = 0; // prj2_task5 use
+
 static void get_str(char *buffer, int max_len); // 从键盘获取字符串输入,用于task4使用程序名加载
 
 static void add_to_history(const char *command); // 添加命令到历史记录
@@ -269,6 +271,13 @@ static int create_process(const char *task_name)
     // 5. 加入就绪队列
     list_add_tail(&pcb[pcb_idx].list, &ready_queue);
 
+    // 6.如果是fly任务，则计数器加一
+    if (strncmp(task_name, "fly", 3) == 0) {
+        num_fly_tasks++;
+        pcb[pcb_idx].round = 1;
+        pcb[pcb_idx].time_slice = 1;
+    }
+
     printk("Task '%s' created, pid = %d, using pcb[%d].\n\r", pcb[pcb_idx].name, pcb[pcb_idx].pid, pcb_idx);
     
     return 1; // 成功
@@ -330,7 +339,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
 
     // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
     // NOTE: The function of sstatus.sie is different from sie's
-    
+    bios_set_timer(get_ticks()+TIMER_INTERVAL); // 设置第一次计时器中断
 
     // TODO: Load tasks by either task id [p1-task3] or task name [p1-task4],
     //   and then execute them.   
@@ -547,7 +556,7 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
             if (processes_created > 0) {
                 bios_putstr("All specified tasks are ready. Starting scheduler...\n\r");
                 init_screen(); // 先清屏
-            //  do_scheduler(); // 非抢占式调度
+                // do_scheduler(); // 非抢占式调度
                 enable_preempt(); // 使用时间片抢占式调度
             } else {
                 bios_putstr("No valid processes were created.\n\r");
@@ -617,3 +626,4 @@ int main(int argc, char *argv[]) // argc 就是 task_num, argv 就是 task_info_
 }
 
 // print1 print2 lock1 lock2 sleep timer fly
+//fly1 fly2 fly3 fly4 fly5

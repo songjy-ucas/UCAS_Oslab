@@ -100,10 +100,10 @@ void sys_sleep(uint32_t time)
     invoke_syscall(SYSCALL_SLEEP, time, 0, 0, 0, 0);
 }
 
-void sys_set_sche_workload(int workload)
+void sys_set_sche_workload(int round, int phase, int workload)
 {
    //TODO
-   invoke_syscall(SYSCALL_SET_SCHE_WORKLOAD, workload, 0, 0, 0, 0); 
+   invoke_syscall(SYSCALL_SET_SCHE_WORKLOAD, (long)round, (long)phase, (long)workload,0, 0); 
 }
 
 

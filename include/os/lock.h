@@ -37,16 +37,17 @@ typedef enum {
     LOCKED,
 } lock_status_t;
 
-typedef struct spin_lock // 自旋锁
+typedef struct spin_lock
 {
     volatile lock_status_t status;
 } spin_lock_t;
 
-typedef struct mutex_lock // 互斥锁
+typedef struct mutex_lock
 {
-    spin_lock_t lock; // 锁中锁！这里的目的是用一个更底层的、轻量级的自旋锁来保护对 mutex_lock_t 结构体自身的访问，保证修改互斥锁自身状态时是原子的
-    list_head block_queue; // 为每一个锁建立专属它的阻塞队列！！！阻塞队列不是全局的
+    spin_lock_t lock;
+    list_head block_queue;
     int key;
+    int pid;
 } mutex_lock_t;
 
 void init_locks(void);
@@ -61,7 +62,59 @@ void do_mutex_lock_acquire(int mlock_idx);
 void do_mutex_lock_release(int mlock_idx);
 
 /************************************************************/
-/* Do not touch this comment. Reserved for future projects. */
+typedef struct barrier
+{
+    // TODO [P3-TASK2 barrier]
+} barrier_t;
+
+#define BARRIER_NUM 16
+
+void init_barriers(void);
+int do_barrier_init(int key, int goal);
+void do_barrier_wait(int bar_idx);
+void do_barrier_destroy(int bar_idx);
+
+typedef struct condition
+{
+    // TODO [P3-TASK2 condition]
+} condition_t;
+
+#define CONDITION_NUM 16
+
+void init_conditions(void);
+int do_condition_init(int key);
+void do_condition_wait(int cond_idx, int mutex_idx);
+void do_condition_signal(int cond_idx);
+void do_condition_broadcast(int cond_idx);
+void do_condition_destroy(int cond_idx);
+
+typedef struct semaphore
+{
+    // TODO [P3-TASK2 semaphore]
+} semaphore_t;
+
+#define SEMAPHORE_NUM 16
+
+void init_semaphores(void);
+int do_semaphore_init(int key, int init);
+void do_semaphore_up(int sema_idx);
+void do_semaphore_down(int sema_idx);
+void do_semaphore_destroy(int sema_idx);
+
+#define MAX_MBOX_LENGTH (64)
+
+typedef struct mailbox
+{
+    // TODO [P3-TASK2 mailbox]
+} mailbox_t;
+
+#define MBOX_NUM 16
+void init_mbox();
+int do_mbox_open(char *name);
+void do_mbox_close(int mbox_idx);
+int do_mbox_send(int mbox_idx, void * msg, int msg_length);
+int do_mbox_recv(int mbox_idx, void * msg, int msg_length);
+
 /************************************************************/
 
 #endif

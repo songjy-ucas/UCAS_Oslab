@@ -1,21 +1,21 @@
-#include "lib.h" 
+#include <os/task.h>
+#include <os/kernel.h>
+#include <stdio.h> // 包含我们新的头文件
 
-int main(void)
+// 不再需要在这里定义 print_int_to_terminal 函数了
+
+int main()
 {
-    // 从共享内存获取上一个任务传递过来的值
-    int input_val = get_shared_mem();
-
-    // 计算结果
-    int result = input_val * input_val;
-
-    print_s("Prog4: Input ");
-    print_d(input_val);
-    print_s(", squaring, final result: ");
-    print_d(result);
-    print_s("\n\r");
-
-    // 最后一个任务，同样将结果写入共享内存，以便调试或后续扩展
-    set_shared_mem(result);
+    volatile int *shared_data = (int *)SHARED_MEM_ADDR;
+    
+    int current_value = *shared_data;
+    long long final_result = (long long)current_value * current_value;
+    *shared_data = (int)final_result;
+    bios_putstr("I am prog4. Input: ");
+    print_int(current_value);
+    bios_putstr(", Final result: ");
+    print_int((int)final_result); // 使用 print_int
+    bios_putstr("\n\r");
 
     return 0;
 }

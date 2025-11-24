@@ -5,5 +5,6 @@
 
 int printf(const char *fmt, ...);
 int vprintf(const char *fmt, va_list va);
+void print_int(int n);
 
 #endif

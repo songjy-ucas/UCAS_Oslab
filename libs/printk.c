@@ -320,3 +320,12 @@ int printl(const char *fmt, ...)
 
     return ret;
 }
+
+long do_getchar(void)
+{
+    int ch;
+    while( (ch = bios_getchar()) == -1){
+        do_scheduler();
+    };
+    return (long)ch;
+}

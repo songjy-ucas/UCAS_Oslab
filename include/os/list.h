@@ -47,21 +47,19 @@ typedef struct list_node
 
 typedef list_node_t list_head;
 
-// LIST_HEAD is used to define the head of a list. 建立双向循环链表头节点
+// LIST_HEAD is used to define the head of a list.
 #define LIST_HEAD(name) struct list_node name = {&(name), &(name)}
 
 /* TODO: [p2-task1] implement your own list API */
-// Initializes a list head.
-static inline void list_init(list_head *list)
+// 初始化链表头
+static inline void list_init(list_head *head)
 {
-    list->next = list;
-    list->prev = list;
+    head->next = head;
+    head->prev = head;
 }
 
-// Inserts a new node between two known consecutive nodes.
-static inline void __list_add(struct list_node *new,
-                              struct list_node *prev,
-                              struct list_node *next)
+// 内部函数：在两个节点之间插入一个新节点
+static inline void __list_add(list_node_t *new, list_node_t *prev, list_node_t *next)
 {
     next->prev = new;
     new->next = next;
@@ -69,45 +67,41 @@ static inline void __list_add(struct list_node *new,
     prev->next = new;
 }
 
-// Adds a new node at the head of the list.
-static inline void list_add(struct list_node *new, list_head *head)
+// 在链表头之后插入新节点 (add to head)
+static inline void list_add(list_node_t *new, list_head *head)
 {
     __list_add(new, head, head->next);
 }
 
-// Adds a new node at the tail of the list.
-static inline void list_add_tail(struct list_node *new, list_head *head)
+// 在链表末尾插入新节点 (add to tail)
+static inline void list_add_tail(list_node_t *new, list_head *head)
 {
     __list_add(new, head->prev, head);
 }
 
-// Deletes a node from the list.
-static inline void __list_del(struct list_node *prev, struct list_node *next)
+// 内部函数：删除两个节点之间的某个节点
+static inline void __list_del(list_node_t * prev, list_node_t * next)
 {
     next->prev = prev;
     prev->next = next;
 }
 
-static inline void list_del(struct list_node *entry)
+// 从链表中删除一个节点
+static inline void list_del(list_node_t *entry)
 {
     __list_del(entry->prev, entry->next);
-    entry->next = entry;
-    entry->prev = entry;
-    // Optional: poison the pointers to catch use-after-free bugs
-    // entry->next = entry->prev = NULL; 
 }
 
-// Checks if the list is empty.
-static inline int list_is_empty(const list_head *head)
+// 检查链表是否为空
+static inline int list_empty(const list_head *head)
 {
     return head->next == head;
 }
-
-// Gets the struct for this entry. 根据结构体中某个成员的地址，反向计算出这个结构体本身的起始地址。
-// ptr: the &struct list_head pointer.
-// type: the type of the struct this is embedded in.
-// member: the name of the list_head within the struct.
+#define offsetof(type, member) __builtin_offsetof(type, member)
+// 获取包含该链表节点的结构体的指针
+// ptr: 指向 list_node 成员的指针
+// type: 包含 list_node 的结构体的类型 (例如 pcb_t)
+// member: list_node 成员在结构体中的名字 (例如 list)
 #define list_entry(ptr, type, member) \
-    ((type *)((char *)(ptr) - (unsigned long)(&((type *)0)->member)))
-
+    (type *)((char *)(ptr) - offsetof(type, member))
 #endif

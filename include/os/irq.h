@@ -42,7 +42,7 @@ enum IrqCode
     IRQC_U_EXT   = 8,
     IRQC_S_EXT   = 9,
     IRQC_M_EXT   = 11,
-    IRQC_COUNT  // 不是元素个数，而是11+1=12 
+    IRQC_COUNT
 };
 
 enum ExcCode
@@ -56,7 +56,7 @@ enum ExcCode
     EXCC_INST_PAGE_FAULT  = 12,
     EXCC_LOAD_PAGE_FAULT  = 13,
     EXCC_STORE_PAGE_FAULT = 15,
-    EXCC_COUNT // 15+1=16
+    EXCC_COUNT
 };
 
 typedef void (*handler_t)(regs_context_t*, uint64_t, uint64_t);

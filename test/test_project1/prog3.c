@@ -1,20 +1,21 @@
-#include "lib.h" 
-int main(void)
+#include <os/task.h>
+#include <os/kernel.h>
+#include <stdio.h> // 包含我们新的头文件
+
+int main()
 {
-    // 从共享内存获取上一个任务传递过来的值
-    int input_val = get_shared_mem();
-    
-    // 计算结果
-    int result = input_val * 3;
+    volatile int *shared_data = (int *)SHARED_MEM_ADDR;
 
-    print_s("Prog3: Input ");
-    print_d(input_val);
-    print_s(", multiplying by 3, output: ");
-    print_d(result);
-    print_s("\n\r");
+    int current_value = *shared_data;
+    int result = current_value * 3;
+    *shared_data = result;
 
-    // 将计算结果写入共享内存，供下一个任务使用
-    set_shared_mem(result);
+    // 新增的输出部分
+    bios_putstr("I am prog3. Input: ");
+    print_int(current_value);
+    bios_putstr(", Result: ");
+    print_int(result);
+    bios_putstr("\n\r");
 
     return 0;
 }

@@ -12,4 +12,5 @@ int printv(const char *fmt, ...);
 /* (QEMU-only) save print content to logfile */
 int printl(const char *fmt, ...);
 
+long do_getchar(void);
 #endif

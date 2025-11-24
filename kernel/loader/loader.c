@@ -4,42 +4,6 @@
 #include <os/kernel.h>
 #include <type.h>
 
-// ----------------- task3 used ----------------------
-// #define BOOT_SECTORS 1
-// #define KERNEL_SECTORS 15
-// #define APP_SECTORS 15
-
-// // 用户程序加载的内存基址和步长
-// #define APP_MEM_BASE    0x52000000
-// #define APP_MEM_STRIDE  0x10000     
-
-// uint64_t load_task_img(int taskid)
-// {
-//     /**
-//      * TODO:
-//      * 1. [p1-task3] load task from image via task id, and return its entrypoint
-     
-//      * 2. [p1-task4] load task via task name, thus the arg should be 'char *taskname'
-//      */
-     
-//     // 计算用户程序在 SD 卡中的起始扇区号
-//     int start_sector = BOOT_SECTORS + KERNEL_SECTORS + taskid * APP_SECTORS;
-
-//     // 计算用户程序要加载到的内存地址
-//     uint64_t load_addr = APP_MEM_BASE + (uint64_t)taskid * APP_MEM_STRIDE;
-
-//     // 3. 调用 BIOS 的 SD 卡读取功能
-//     bios_sd_read((uint32_t)load_addr, APP_SECTORS, start_sector);
-
-//     return load_addr;
-// }
-
-
-// ----------------- task4 used ----------------------
-
-// next_free_mem 指向下一个可用的内存加载地址
-static uint64_t next_free_mem = TASK_MEM_BASE;
-
 // NBYTES2SEC宏
 #define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0))
 
@@ -50,12 +14,13 @@ static uint8_t read_buffer[READ_BUFFER_SIZE];
 
 uint64_t load_task_img(const char *taskname)
 {
-    // 1. 在 tasks 数组中按名查找 
+ // 1. 在全局 tasks 数组中按名查找
     int task_idx = -1;
     for (int i = 0; i < TASK_MAXNUM; i++) {
         if (tasks[i].name[0] != '\0' && strcmp(tasks[i].name, taskname) == 0) {
             task_idx = i;
             break;
+            
         }
     }
 
@@ -63,48 +28,39 @@ uint64_t load_task_img(const char *taskname)
         bios_putstr("Task not found: '");
         bios_putstr((char *)taskname);
         bios_putstr("'\n\r");
-        return 0;
+        return 0; // 返回0表示加载失败
     }
 
-    // 从 task_info 中获取精确的字节级信息 
     task_info_t *info = &tasks[task_idx];
-    uint32_t start_byte = info->offset;
+    uint32_t start_byte_offset = info->offset;
     uint32_t file_size = info->size;
 
-    // 2. 制定扇区读取计划 
-    uint32_t start_sector = start_byte / SECTOR_SIZE;
-    uint32_t end_byte = start_byte + file_size - 1;
-    uint32_t end_sector = end_byte / SECTOR_SIZE;
+    // 2. 计算需要读取的扇区范围
+    uint32_t start_sector = start_byte_offset / SECTOR_SIZE;
+    uint32_t end_sector = (start_byte_offset + file_size - 1) / SECTOR_SIZE;
     uint32_t num_sectors = end_sector - start_sector + 1;
 
-    // 检查所需缓冲区大小是否超出限制 
+    // 检查所需缓冲区大小是否超出限制
     if (num_sectors * SECTOR_SIZE > READ_BUFFER_SIZE) {
-        bios_putstr("Error: Task is too large to fit in the read buffer!\n\r");
+        bios_putstr("Error: Task is too large for the read buffer!\n\r");
         return 0;
     }
 
-    // 3. 从SD卡读取包含目标程序的所有扇区到临时缓冲区 
-    bios_sd_read((uintptr_t)read_buffer, num_sectors, start_sector);
+    // 3. 从SD卡读取包含目标程序的所有扇区到临时缓冲区
+    bios_sd_read((uint32_t)read_buffer, num_sectors, start_sector);
 
-    // 4. 从缓冲区中精确拷贝所需数据
-    // 计算目标数据在缓冲区内的起始偏移量 
-    uint32_t offset_in_buffer = start_byte % SECTOR_SIZE;
+    // 4. 从缓冲区中精确拷贝所需数据到最终加载地址
+    // 计算目标数据在缓冲区内的起始偏移
+    uint32_t offset_in_buffer = start_byte_offset % SECTOR_SIZE;
 
-    // ====================================================================
-    // 【prj2中发现问题后做如下修改】: 动态确定加载地址，并更新下一个可用地址
-    // ====================================================================
-    // 1. 确定本次加载到内存的目标地址
-    uint64_t load_addr = next_free_mem;
+    // 确定最终加载到内存的目标地址 (假设每个任务有固定的内存空间)
+    uint64_t load_addr = TASK_MEM_BASE + (uint64_t)task_idx * TASK_SIZE;
 
-    // 2. 使用 memcpy 将数据从缓冲区的正确位置，拷贝正确的大小，到最终的加载地址
+    // 使用 memcpy 将数据从缓冲区的正确位置，拷贝正确的大小，到最终的加载地址
     memcpy((void*)load_addr, read_buffer + offset_in_buffer, file_size);
     
-    // 3. 更新 next_free_mem 指针，为下一个程序分配空间
-    uint64_t end_addr = load_addr + file_size;
-    #define PAGE_SIZE 4096
-    // 计算对齐后的下一个空闲地址：
-    // (end_addr + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE
-    next_free_mem = (end_addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    // BSS段的清理应由应用程序的启动代码(crt.S)或加载器完成。
 
-    return load_addr; 
+    // 5. 返回程序的入口点
+    return info->entry_point;
 }

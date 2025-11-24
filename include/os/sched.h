@@ -32,12 +32,9 @@
 #include <type.h>
 #include <os/list.h>
 
-#define NUM_MAX_TASK 16 
-#define TASK_NAME_LEN 32 // 定义任务名的最大长度
+#define NUM_MAX_TASK 16
 
-extern int num_fly_tasks; // 记录当前参与调度的 fly 任务总数,task5使用
-
-/* used to save register infomation */ // 中断保存
+/* used to save register infomation */
 typedef struct regs_context
 {
     /* Saved main processor registers.*/
@@ -50,19 +47,18 @@ typedef struct regs_context
     reg_t scause;
 } regs_context_t;
 
-/* used to save register infomation in switch_to */ //调用保存
+/* used to save register infomation in switch_to */
 typedef struct switchto_context
 {
     /* Callee saved registers.*/
-    reg_t regs[14]; // sp,ra,s0-s11
+    reg_t regs[14];
 } switchto_context_t;
 
 typedef enum {
     TASK_BLOCKED,
     TASK_RUNNING,
     TASK_READY,
-    TASK_EXITED, // 进程结束，那么这个PCB变为可使用
-    TASK_UNUSED, // 已经分配给一个进程但是未使用，这个PCB就不能被别的使用了
+    TASK_EXITED,
 } task_status_t;
 
 /* Process Control Block */
@@ -72,16 +68,20 @@ typedef struct pcb
     // NOTE: this order must be preserved, which is defined in regs.h!!
     reg_t kernel_sp;
     reg_t user_sp;
+    ptr_t kernel_stack_base;
+    ptr_t user_stack_base;
 
     /* previous, next pointer */
     list_node_t list;
+    list_head wait_list;
 
     /* process id */
     pid_t pid;
+    pid_t parent_pid;
 
     /* BLOCK | READY | RUNNING */
     task_status_t status;
-    char name[TASK_NAME_LEN]; // 进程名
+    int exit_code;
 
     /* cursor position */
     int cursor_x;
@@ -89,21 +89,7 @@ typedef struct pcb
 
     /* time(seconds) to wake up sleeping PCB */
     uint64_t wakeup_time;
-    
-    // task5 use
-    // 从用户程序报告的剩余工作量 (即task5中 fly 程序的 remain_length)
-    int workload;
-    
-    // 当前进程剩余的时间片数量 (tick 的数量)
-    int time_slice;
-    
-    // 标记飞机当前所处的阶段
-    // 0: 飞向检查点 (to checkpoint)
-    // 1: 飞向终点 (to end)
-    int in_checkpoint_phase;
 
-    // 轮次记录
-    int round;
 } pcb_t;
 
 /* ready queue to run */
@@ -126,10 +112,19 @@ void do_sleep(uint32_t);
 
 void do_block(list_node_t *, list_head *queue);
 void do_unblock(list_node_t *);
-void do_set_sche_workload(int round, int phase, int workload);
 
 /************************************************************/
-/* Do not touch this comment. Reserved for future projects. */
+/* TODO [P3-TASK1] exec exit kill waitpid ps*/
+#ifdef S_CORE
+extern pid_t do_exec(int id, int argc, uint64_t arg0, uint64_t arg1, uint64_t arg2);
+#else
+extern pid_t do_exec(char *name, int argc, char *argv[]);
+#endif
+extern void do_exit(void);
+extern int do_kill(pid_t pid);
+extern int do_waitpid(pid_t pid);
+extern void do_process_show();
+extern pid_t do_getpid();
 /************************************************************/
 
 #endif

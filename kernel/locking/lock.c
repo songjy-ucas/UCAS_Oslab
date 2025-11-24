@@ -2,18 +2,27 @@
 #include <os/sched.h>
 #include <os/list.h>
 #include <atomic.h>
-#include <printk.h> // 引入 printk 用于调试
 
 mutex_lock_t mlocks[LOCK_NUM];
+// 由于 mutex_lock_t 结构体没有状态字段，我们创建一个并行的状态数组来跟踪每个锁的状态
+static lock_status_t mlock_status[LOCK_NUM];
+
+
+// 用于保护 mlocks 数组在初始化/分配过程中的原子性
+static spin_lock_t mlock_alloc_lock;
+
 
 void init_locks(void)
 {
     /* TODO: [p2-task2] initialize mlocks */
-    for (int i = 0; i < LOCK_NUM; i++) {
-        // 初始化每个互斥锁
-        spin_lock_init(&mlocks[i].lock);    // 初始化内部的自旋锁
-        list_init(&mlocks[i].block_queue);  // 初始化阻塞队列
-        mlocks[i].key = -1;                 // -1 表示这个锁槽位当前是空闲的，未被任何 key 占用
+
+    spin_lock_init(&mlock_alloc_lock);
+    for (int i = 0; i < LOCK_NUM; i++)
+    {
+        spin_lock_init(&mlocks[i].lock);
+        list_init(&mlocks[i].block_queue);
+        mlocks[i].key = -1; // -1 表示该锁槽位未使用
+        mlock_status[i] = UNLOCKED;
     }
 }
 
@@ -23,90 +32,115 @@ void spin_lock_init(spin_lock_t *lock)
     lock->status = UNLOCKED;
 }
 
-int spin_lock_try_acquire(spin_lock_t *lock) //尝试获取一次锁，但如果失败了，它不会等待，而是立即返回
+int spin_lock_try_acquire(spin_lock_t *lock)
 {
     /* TODO: [p2-task2] try to acquire spin lock */
-    // 使用“比较并交换”：尝试将锁从 UNLOCKED 状态变为 LOCKED 状态，`atomic_cmpxchg` 会返回操作前内存中的原始值
-    uint32_t old_status = atomic_cmpxchg(UNLOCKED, LOCKED, (ptr_t)&lock->status);
-
-    // 如果返回的原始值是 UNLOCKED，说明成功地完成了“比较并交换”，锁已到手
-    return (old_status == UNLOCKED); // 成功返回 1 ，失败返回 0 
+    return (atomic_swap(LOCKED, (ptr_t)&lock->status) == UNLOCKED);
 }
 
 void spin_lock_acquire(spin_lock_t *lock)
 {
     /* TODO: [p2-task2] acquire spin lock */
-    // 使用一个 while 循环，不断地尝试获取锁，直到成功为止
-    while (atomic_swap(LOCKED, (ptr_t)&lock->status) == LOCKED){
-    
+    while (!spin_lock_try_acquire(lock))
+    {
+        // loop and wait
     }
 }
 
 void spin_lock_release(spin_lock_t *lock)
 {
     /* TODO: [p2-task2] release spin lock */
-    // 原子地将锁的状态设置回 UNLOCKED
-    atomic_swap(UNLOCKED, (ptr_t)&lock->status);
+    lock->status = UNLOCKED;
 }
 
-int do_mutex_lock_init(int key) // 初始化一个互斥锁，并返回其handle
+int do_mutex_lock_init(int key)
 {
     /* TODO: [p2-task2] initialize mutex lock */
-    int free_slot = -1;
+    spin_lock_acquire(&mlock_alloc_lock);
 
-    // 遍历全局锁数组，寻找与 key 匹配的锁或一个空闲槽位
-    for (int i = 0; i < LOCK_NUM; i++) {
-        if (mlocks[i].key == key) {
-            // 如果已经存在一个锁对应这个 key，直接返回它的句柄 (即数组下标)
-            return i;
-        }
-        // 记录下第一个遇到的空闲槽位
-        if (mlocks[i].key == -1 && free_slot == -1) {
-            free_slot = i;
+    // 查找是否已存在基于此 key 的锁
+    for (int i = 0; i < LOCK_NUM; i++)
+    {
+        if (mlocks[i].key == key)
+        {
+            spin_lock_release(&mlock_alloc_lock);
+            return i; // 返回已存在的锁的句柄 (索引)
         }
     }
 
-    // 如果没有找到匹配的 key，但找到了空闲槽位
-    if (free_slot != -1) {
-        mlocks[free_slot].key = key; // 将这个 key 与空闲槽位绑定
-        return free_slot;            // 返回新创建的锁的句柄
+    // 查找一个未使用的锁槽位进行初始化
+    int lock_idx = -1;
+    for (int i = 0; i < LOCK_NUM; i++)
+    {
+        if (mlocks[i].key == -1)
+        {
+            mlocks[i].key = key;
+            lock_idx = i;
+            break;
+        }
     }
 
-    // 所有锁槽位都已被占用，且没有与 key 匹配的
-    printk("Error: No free mutex lock available.\n");
-    return -1; // 返回 -1 表示失败
+    spin_lock_release(&mlock_alloc_lock);
+    return lock_idx; // 返回新锁的句柄，如果没找到则返回-1
+ 
 }
 
-void do_mutex_lock_acquire(int mlock_idx) //获取一个互斥锁
+void do_mutex_lock_acquire(int mlock_idx)
 {
     /* TODO: [p2-task2] acquire mutex lock */
-    if (mlock_idx < 0 || mlock_idx >= LOCK_NUM) return; // 检查handle合法性
-
     if (mlock_idx < 0 || mlock_idx >= LOCK_NUM) return;
 
-    // 尝试获取自旋锁，如果成功，就代表获取了互斥锁，直接返回
-    if (spin_lock_try_acquire(&mlocks[mlock_idx].lock)) {
-        return;
-    }
+    mutex_lock_t *lock = &mlocks[mlock_idx];
 
-    // 获取锁失败，说明锁被占用，需要阻塞当前进程，do_block 会将当前进程放入阻塞队列并调度走
-    do_block(&current_running->list, &mlocks[mlock_idx].block_queue);
-    do_scheduler(); // 在这里去调度，不要在do_block里面调度，因为do_block不一定是current_running
+    while (1) {
+        // 使用自旋锁保护对锁状态和阻塞队列的访问
+        spin_lock_acquire(&lock->lock);
+
+        if (mlock_status[mlock_idx] == UNLOCKED)
+        {
+            // 锁是可用的，获取它并立即返回
+            mlock_status[mlock_idx] = LOCKED;
+            lock->pid = current_running->pid;
+            spin_lock_release(&lock->lock);
+            return;
+        }
+        else
+        {
+            // 锁被占用，将当前进程阻塞
+            do_block(&current_running->list, &lock->block_queue);
+            // 释放自旋锁，允许其他进程（特别是持有锁的进程）运行
+            spin_lock_release(&lock->lock);
+            // 调用调度器切换进程
+            do_scheduler();
+            // 被唤醒后，循环再次尝试获取锁
+        }
+    }
 }
 
-void do_mutex_lock_release(int mlock_idx) // 释放一个互斥锁
+void do_mutex_lock_release(int mlock_idx)
 {
     /* TODO: [p2-task2] release mutex lock */
-    if (mlock_idx < 0 || mlock_idx >= LOCK_NUM) return; // 检查handle合法性
+    if (mlock_idx < 0 || mlock_idx >= LOCK_NUM) return;
 
-    list_head *queue = &mlocks[mlock_idx].block_queue;
+    mutex_lock_t *lock = &mlocks[mlock_idx];
 
-    // 检查阻塞队列是否为空
-    if (list_is_empty(queue)) {
-        // 如果没有进程在等待，就直接释放自旋锁（即释放互斥锁）
-        spin_lock_release(&mlocks[mlock_idx].lock);
-    } else {
-        // 如果有进程在等待，不释放锁，而是直接唤醒队首的进程
-        do_unblock(queue->next);
+    spin_lock_acquire(&lock->lock);
+
+    // 1. 无论如何，都将锁的状态设为 UNLOCKED
+    // mlock_status[mlock_idx] = UNLOCKED;
+
+    // // 2. 如果有等待者，唤醒队首的一个
+    // if (!list_empty(&lock->block_queue))
+    // {
+    //     do_unblock(lock->block_queue.next);
+    // }
+    
+    if (lock->pid == current_running->pid) { // 安全检查：只有持有者才能释放锁
+    mlock_status[mlock_idx] = UNLOCKED;
+    lock->pid = -1; // <<-- 清除持有者！
+    if (!list_empty(&lock->block_queue)) {
+        do_unblock(lock->block_queue.next);
     }
+}
+    spin_lock_release(&lock->lock);
 }

@@ -30,10 +30,10 @@
 
 #include <type.h>
 
-#define TIMER_INTERVAL 1500 // 两次时钟中断之间的间隔，值越小，中断越频繁 // QUME 30
+#define TIMER_INTERVAL 150
 
-extern uint64_t time_base; // 每秒钟对应的时钟周期数，系统的时钟频率
-extern uint64_t time_elapsed; // 暂存ticks数
+extern uint64_t time_base;
+extern uint64_t time_elapsed;
 
 extern uint64_t get_timer(void);
 extern uint64_t get_ticks(void);

@@ -176,12 +176,15 @@ static void init_pcb(void)
     const char *task_names[] = {"shell"};
     int num_user_tasks = sizeof(task_names) / sizeof(const char *);
 
-    for (int i = 0; i < num_user_tasks; i++) {
-        int pcb_idx = i + 1; // pcb[0] 留给 idle 任务
+        int pcb_idx = 1; // pcb[0] 留给 idle 任务
         pcb[pcb_idx].pid = process_id++;
 
-        uint64_t entry_point = load_task_img(task_names[i]);
-
+        // 2. 加载任务代码
+        uint64_t entry_point = load_task_img(task_names[0]);
+        if (entry_point == 0) {
+           printk("Error: Task image '%s' not found!\n", task_names[0]);
+        }
+        
         ptr_t kernel_stack_base = allocKernelPage(1);
         ptr_t user_stack_base   = allocUserPage(1);
 
@@ -197,13 +200,12 @@ static void init_pcb(void)
         list_init(&pcb[pcb_idx].list); 
       
         list_add_tail(&pcb[pcb_idx].list, &ready_queue);
-    }
     
     /* 初始化 pid0 (idle 任务) 并设置 current_running */
     pid0_pcb.pid = 0; // pid0 的 pid 应该是0
     pid0_pcb.status = TASK_RUNNING;
     pid0_pcb.kernel_sp = (reg_t)pid0_stack ;
-     list_init(&pid0_pcb.list);
+    list_init(&pid0_pcb.list);
     
     // 设置 current_running 的初始值
     current_running = &pid0_pcb;

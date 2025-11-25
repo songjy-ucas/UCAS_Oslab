@@ -50,6 +50,7 @@ typedef struct mutex_lock
     int pid;
 } mutex_lock_t;
 
+
 void init_locks(void);
 
 void spin_lock_init(spin_lock_t *lock);
@@ -60,6 +61,7 @@ void spin_lock_release(spin_lock_t *lock);
 int do_mutex_lock_init(int key);
 void do_mutex_lock_acquire(int mlock_idx);
 void do_mutex_lock_release(int mlock_idx);
+void check_and_release_locks(pid_t pid);
 
 /************************************************************/
 typedef struct barrier

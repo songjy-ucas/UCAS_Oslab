@@ -28,55 +28,16 @@ register pcb_t * current_running asm("tp");
 
 extern void ret_from_exception();
 
-// void do_scheduler(void)
-// {
-//     // TODO: [p2-task3] Check sleep queue to wake up PCBs
-
-//     /************************************************************/
-//     /* Do not touch this comment. Reserved for future projects. */
-//     /************************************************************/
-
-//     // TODO: [p2-task1] Modify the current_running pointer.
-
-
-//     check_sleeping();
-//     // 1. 保存当前任务的指针，并准备下一个任务的指针
-//     pcb_t *prev = current_running;
-//     pcb_t *next;
-
-//     // 2. 从就绪队列中选择下一个要运行的任务
-//     if (!list_empty(&ready_queue)) {
-//         // 如果就绪队列不为空，取出队头的任务作为下一个
-//         next = list_entry(ready_queue.next, pcb_t, list);
-//         // 将其从就绪队列中移除
-//         list_del(ready_queue.next);
-//     } else {
-//         // 如果就绪队列为空，说明只有 idle 任务(pid0)可以运行
-//         next = &pid0_pcb;
-//     }
-
-//     // 3. 如果当前任务(prev)不是 idle 任务，则将其放回就绪队列的末尾
-//     //    这样就实现了 Round-Robin (轮转)
-//     //    状态为 RUNNING 的任务才需要放回，被阻塞的任务不应放回
-//     if (prev != &pid0_pcb && prev->status == TASK_RUNNING) {
-//         prev->status = TASK_READY;
-//         list_add_tail(&prev->list, &ready_queue);
-//     }
-    
-//     // 4. 更新 current_running 指针，并设置新任务的状态
-//     next->status = TASK_RUNNING;
-//     current_running = next;
-
-//     // 5. 调用汇编实现的 switch_to 函数，完成上下文切换
-//     //    prev 的上下文将被保存，next 的上下文将被恢复
-//     switch_to(prev, next);
-
-//     // TODO: [p2-task1] switch_to current_running
-
-// }
-
 void do_scheduler(void)
 {
+    // TODO: [p2-task3] Check sleep queue to wake up PCBs
+
+    /************************************************************/
+    /* Do not touch this comment. Reserved for future projects. */
+    /************************************************************/
+
+    // TODO: [p2-task1] Modify the current_running pointer.
+
     // 1. 检查睡眠队列，唤醒到期的进程
     //    这个函数应该将睡眠结束的进程从 BLOCKED 状态改为 READY，并加入 ready_queue
     check_sleeping();
@@ -127,6 +88,8 @@ void do_scheduler(void)
     // 6. 调用汇编实现的 switch_to 函数，完成上下文切换
     //    prev 的上下文将被保存，next 的上下文将被恢复
     switch_to(prev, next);
+    // TODO: [p2-task1] switch_to current_running
+
 }
 
 void do_sleep(uint32_t sleep_time)
@@ -185,62 +148,68 @@ extern void exit_trampoline();
 // [P3-TASK1] A/C-Core implementation of do_exec
 pid_t do_exec(char *name, int argc, char *argv[])
 {
-    // 1. Find a free PCB
+    printk("do_exec: starting to load %s\n", name); // debug use
+    // 1. 查找空闲 PCB
     pcb_t *new_pcb = find_free_pcb();
     if (new_pcb == NULL) {
         printk("Error: No free PCB for exec!\n");
-        return -1; // No free PCB
+        return -1;
     }
 
-    // 2. Load task image
+    // 2. 加载任务代码
     uint64_t entry_point = load_task_img(name);
     if (entry_point == 0) {
         printk("Error: Task image '%s' not found!\n", name);
-        return -1; // Task not found
+        return -1;
     }
 
-    // 3. Allocate kernel and user stack
+    // 3. 分配内核栈和用户栈
     new_pcb->kernel_stack_base = allocKernelPage(1);
     new_pcb->user_stack_base = allocUserPage(1);
     ptr_t kernel_stack = new_pcb->kernel_stack_base + PAGE_SIZE;
     ptr_t user_stack = new_pcb->user_stack_base + PAGE_SIZE;
 
-    // 4. Setup user stack for argc/argv (the complex part)
-    // As per Figure P3-4
-    // We will copy argv strings and the argv pointer array to the new user stack
-    char *argv_stack[argc];
+    // 4. 构造用户栈参数 (argc/argv)
+    //    布局: [高] 字符串 -> 指针数组 -> [低] 栈顶
+    
+    // 4.1 计算所有参数字符串的总长度
     int total_len = 0;
-    for(int i = 0; i < argc; ++i){
-        total_len += strlen(argv[i]) + 1; // +1 for '\0'
+    for (int i = 0; i < argc; ++i) {
+        total_len += strlen(argv[i]) + 1; // +1 是为了 '\0'
     }
 
-    // Allocate space for strings on the stack, align to 8 bytes
+    // 4.2 在栈顶预留字符串空间，并做 8 字节对齐
     ptr_t string_base = user_stack - total_len;
-    string_base &= ~0x7; // 8-byte alignment
+    string_base &= ~0x7; // 向下 8 字节对齐
 
-    // Copy strings
+    // 4.3 拷贝字符串内容到栈上
+    //     我们用一个临时数组来记录拷贝后的新地址
+    char *argv_new_addr[argc]; 
     char *current_str_pos = (char *)string_base;
-    for(int i = 0; i < argc; ++i){
+    
+    for (int i = 0; i < argc; ++i) {
         strcpy(current_str_pos, argv[i]);
-        argv_stack[i] = current_str_pos; // Store the new address
+        argv_new_addr[i] = current_str_pos; // 记录这个参数在用户栈的新地址
         current_str_pos += strlen(argv[i]) + 1;
     }
 
-    // Allocate space for the argv pointer array
-    ptr_t argv_ptr_base = string_base - sizeof(char *) * (argc + 1); // +1 for NULL terminator
-    
-    // Copy the pointer array
-    char **argv_on_stack = (char **)argv_ptr_base;
-    for(int i = 0; i < argc; ++i){
-        argv_on_stack[i] = argv_stack[i];
-    }
-    argv_on_stack[argc] = NULL; // As per C standard
+    // 4.4 在字符串下方预留指针数组的空间
+    //     数组大小: argc 个指针 + 1 个 NULL 结尾符
+    ptr_t argv_ptr_base = string_base - sizeof(char *) * (argc + 1);
+    //     再做一次 128 字节对齐 (RISC-V 栈通常要求 16 字节对齐，128 更稳妥)
+    argv_ptr_base &= ~0x7F; // 强迫症式对齐，模仿学长那种严谨风格
 
-    // The final user stack pointer
+    // 4.5 将指针数组拷贝到栈上
+    char **argv_on_stack = (char **)argv_ptr_base;
+    for (int i = 0; i < argc; ++i) {
+        argv_on_stack[i] = argv_new_addr[i];
+    }
+    argv_on_stack[argc] = NULL; // 标准要求 argv 数组最后以 NULL 结尾
+
+    // 4.6 最终的用户栈顶
     ptr_t final_user_sp = argv_ptr_base;
 
-
-    // 5. Initialize PCB fields
+    // 5. 初始化 PCB 基本字段
     new_pcb->pid = process_id++;
     new_pcb->parent_pid = current_running->pid;
     new_pcb->status = TASK_READY;
@@ -248,29 +217,12 @@ pid_t do_exec(char *name, int argc, char *argv[])
     new_pcb->cursor_y = 0;
     list_init(&new_pcb->wait_list);
 
-    // 6. Initialize register context on kernel stack
-    // We need a modified version of init_pcb_stack that can set a0 and a1
-    regs_context_t *pt_regs =
-        (regs_context_t *)(kernel_stack - sizeof(regs_context_t));
-    memset(pt_regs, 0, sizeof(regs_context_t));
-    
-    // Set arguments for the new process's main function
-    pt_regs->regs[10] = argc;         // a0 = argc
-    pt_regs->regs[11] = final_user_sp; // a1 = argv
+    // 6. 调用封装好的函数初始化寄存器上下文
+    //    注意：我们将 final_user_sp 同时作为 栈顶(sp) 和 参数数组地址(argv/a1) 传入
+    //    因为此时栈顶存放的正好就是那个指针数组
+    init_pcb_stack(kernel_stack, final_user_sp, entry_point, new_pcb, argc, (char **)final_user_sp);
 
-    pt_regs->regs[2] = final_user_sp; // sp = user_sp
-    pt_regs->regs[4] = (reg_t)new_pcb; // tp = current pcb
-    pt_regs->sepc = entry_point;
-    pt_regs->sstatus = (read_csr(sstatus) | SR_SPIE) & ~SR_SPP;
-
-    switchto_context_t *pt_switchto =
-        (switchto_context_t *)((ptr_t)pt_regs - sizeof(switchto_context_t));
-    pt_switchto->regs[0] = (reg_t)&ret_from_exception; // ra
-
-    new_pcb->kernel_sp = (reg_t)pt_switchto;
-    new_pcb->user_sp = final_user_sp;
-
-    // 7. Add to ready queue
+    // 7. 加入就绪队列
     list_add_tail(&new_pcb->list, &ready_queue);
     
     return new_pcb->pid;
@@ -367,7 +319,7 @@ int do_kill(pid_t pid)
     // 2. Wake up any processes waiting on the killed process
     while (!list_empty(&target_pcb->wait_list)) {
         list_node_t *waiter_node = target_pcb->wait_list.next;
-        pcb_t *waiter_pcb = list_entry(waiter_node, pcb_t, list);
+        // pcb_t *waiter_pcb = list_entry(waiter_node, pcb_t, list);
         do_unblock(waiter_node);
     }
 
@@ -416,16 +368,15 @@ int do_waitpid(pid_t pid)
 
     return pid;
 }
-
 void do_process_show()
 {
-    // 打印一个表头
-    printk("PID\tSTATUS\t\tKERNEL_SP\tUSER_SP\n\r");
+
+    printk("[Process Table]:\n");
     
     // 遍历所有可能的PCB
     for (int i = 0; i < NUM_MAX_TASK; ++i) {
         // 检查PCB是否被使用 (pid != -1)
-        if (pcb[i].pid != -1 && pcb[i].status != TASK_EXITED) { // 不显示已退出的进程
+        if (pcb[i].pid != -1 && pcb[i].status != TASK_EXITED) {
             char *status_str;
             switch (pcb[i].status) {
                 case TASK_BLOCKED:
@@ -437,22 +388,19 @@ void do_process_show()
                 case TASK_READY:
                     status_str = "READY";
                     break;
-                /* case TASK_EXITED: 已经被上面的if排除了
-                    status_str = "EXITED";
-                    break; */
                 default:
                     status_str = "UNKNOWN";
                     break;
             }
-            printk("[%d]\t%s\t\t0x%x\t0x%x\n\r", 
-                   pcb[i].pid, 
-                   status_str, 
-                   pcb[i].kernel_sp, 
-                   pcb[i].user_sp);
+            
+      
+            printk("[%d] PID : %d\tSTATUS : %s\n", 
+                   i,            
+                   pcb[i].pid,   
+                   status_str);  
         }
     }
 }
-
 // 这是 do_getpid 的实现，非常简单
 pid_t do_getpid()
 {

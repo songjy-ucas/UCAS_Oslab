@@ -3,7 +3,7 @@
 #include <kernel.h>
 #include <unistd.h>
 
-static const long IGNORE = 0L;
+// static const long IGNORE = 0L;
 
 static long invoke_syscall(long sysno, long arg0, long arg1, long arg2,
                            long arg3, long arg4)
@@ -171,41 +171,49 @@ void sys_clear(void)
 int  sys_barrier_init(int key, int goal)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_barrier_init */
+    return invoke_syscall(SYSCALL_BARR_INIT, key, goal, 0, 0, 0);
 }
 
 void sys_barrier_wait(int bar_idx)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_barrie_wait */
+    invoke_syscall(SYSCALL_BARR_WAIT, bar_idx, 0, 0, 0, 0);
 }
 
 void sys_barrier_destroy(int bar_idx)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_barrie_destory */
+    invoke_syscall(SYSCALL_BARR_DESTROY, bar_idx, 0, 0, 0, 0);
 }
 
 int sys_condition_init(int key)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_condition_init */
+    return invoke_syscall(SYSCALL_COND_INIT, key, 0, 0, 0, 0);
 }
 
 void sys_condition_wait(int cond_idx, int mutex_idx)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_condition_wait */
+    invoke_syscall(SYSCALL_COND_WAIT, cond_idx, mutex_idx, 0, 0, 0);
 }
 
 void sys_condition_signal(int cond_idx)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_condition_signal */
+    invoke_syscall(SYSCALL_COND_SIGNAL, cond_idx, 0, 0, 0, 0);
 }
 
 void sys_condition_broadcast(int cond_idx)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_condition_broadcast */
+    invoke_syscall(SYSCALL_COND_BROADCAST, cond_idx, 0, 0, 0, 0);
 }
 
 void sys_condition_destroy(int cond_idx)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_condition_destroy */
+    invoke_syscall(SYSCALL_COND_DESTROY, cond_idx, 0, 0, 0, 0);
 }
 
 int sys_semaphore_init(int key, int init)
@@ -231,20 +239,24 @@ void sys_semaphore_destroy(int sema_idx)
 int sys_mbox_open(char * name)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_mbox_open */
+    return invoke_syscall(SYSCALL_MBOX_OPEN, (long)name, 0, 0, 0, 0);
 }
 
 void sys_mbox_close(int mbox_id)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_mbox_close */
+    invoke_syscall(SYSCALL_MBOX_CLOSE, (long)mbox_id, 0, 0, 0, 0);
 }
 
 int sys_mbox_send(int mbox_idx, void *msg, int msg_length)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_mbox_send */
+    return invoke_syscall(SYSCALL_MBOX_SEND, (long)mbox_idx, (long)msg, (long)msg_length, 0, 0);
 }
 
 int sys_mbox_recv(int mbox_idx, void *msg, int msg_length)
 {
     /* TODO: [p3-task2] call invoke_syscall to implement sys_mbox_recv */
+    return invoke_syscall(SYSCALL_MBOX_RECV, (long)mbox_idx, (long)msg, (long)msg_length, 0, 0);
 }
 /************************************************************/

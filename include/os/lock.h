@@ -65,6 +65,10 @@ void do_mutex_lock_release(int mlock_idx);
 typedef struct barrier
 {
     // TODO [P3-TASK2 barrier]
+    int key;            // 唯一标识符
+    int goal;           // 目标到达的进程数量
+    int current_count;  // 当前已到达的进程数量
+    list_head wait_queue;
 } barrier_t;
 
 #define BARRIER_NUM 16
@@ -77,6 +81,8 @@ void do_barrier_destroy(int bar_idx);
 typedef struct condition
 {
     // TODO [P3-TASK2 condition]
+    int key;            // 唯一标识符
+    list_head wait_queue;
 } condition_t;
 
 #define CONDITION_NUM 16
@@ -102,10 +108,21 @@ void do_semaphore_down(int sema_idx);
 void do_semaphore_destroy(int sema_idx);
 
 #define MAX_MBOX_LENGTH (64)
-
+#define MBOX_NAME_LEN (32)
 typedef struct mailbox
 {
     // TODO [P3-TASK2 mailbox]
+    char name[MBOX_NAME_LEN];  // 信箱名字
+    char buf[MAX_MBOX_LENGTH]; // 数据缓冲区
+    int head;                  // 读指针
+    int tail;                  // 写指针
+    int count;                 // 当前缓冲区内数据字节数
+    int open_refs;             // 引用计数，0 表示未使用
+    
+    spin_lock_t lock;          // 保护该信箱的自旋锁
+    
+    list_head send_wait_queue; // 发送等待队列 (满时等待)
+    list_head recv_wait_queue;
 } mailbox_t;
 
 #define MBOX_NUM 16

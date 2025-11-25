@@ -13,7 +13,7 @@
 .equ bios_func_entry, 0x50150000
 
 .data
-msg_boot: .string "It's zhangyang's bootloader...\n\r"
+msg_boot: .string "It's songjunyi's bootloader...\n\r"
 
 .text
 .global main
@@ -27,7 +27,6 @@ main:
 	// [p1-task1] call BIOS to print string
 	la   a0, msg_boot
 	li   a7, BIOS_PUTSTR
-    // 【关键修正】先将地址加载到寄存器，再通过寄存器跳转
 	li   t0, bios_func_entry
     jalr t0
 
@@ -38,12 +37,11 @@ main:
 	lh   a1, 0(t0)            // a1: 从元数据区读取OS大小 (扇区数)
 	li   a2, 1                // a2: 从第1个扇区开始读 (0是bootblock)
 	li   a7, BIOS_SDREAD
-    // 【关键修正】先将地址加载到寄存器，再通过寄存器跳转
 	li   t0, bios_func_entry
 	jalr t0
 
 	// [p1-task4] 加载任务相关参数并传递给内核
-    // 将元信息加载到参数寄存器 a0 和 a1
+    // 将信息加载到参数寄存器 a0 和 a1
     li   t0, task_num_loc
     lh   a0, 0(t0)            // a0 = task_num
 

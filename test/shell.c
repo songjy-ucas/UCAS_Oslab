@@ -37,6 +37,25 @@
 #define CMD_MAX_LENGTH 128
 #define MAX_ARGV 16
 
+/* ================= 保持我Pro2之前的把保存命令行的功能 ================= */
+#define HISTORY_MAX 10
+static char history_buffer[HISTORY_MAX][CMD_MAX_LENGTH];
+static int history_count = 0;
+static int history_current = 0;
+
+static void add_to_history(const char *command)
+{
+    if (command[0] == '\0' || 
+       (history_count > 0 && strcmp(command, history_buffer[(history_count - 1) % HISTORY_MAX]) == 0)) 
+    {
+        return;
+    }
+    strcpy(history_buffer[history_count % HISTORY_MAX], command);
+    history_count++;
+    history_current = history_count; 
+}
+/* ============================================================== */
+
 int parse_command(char *buffer, char *argv[])
 {
     int argc = 0;
@@ -77,14 +96,71 @@ int main(void)
 
         // TODO [P3-task1]: ps, exec, kill, clear 
     
-        // [OPTIMIZED] 采用参考代码中更健壮的、独立的行输入循环
+        // 独立的行输入循环
         
+        // [HISTORY] 每次新循环开始时，重置当前历史指针到最新位置
+        history_current = history_count;
+
         printf("> root@UCAS_OS: ");
         sys_reflush();
         buffer_ptr = 0;
+        
+        // [Fix] 确保缓冲区初始化，避免脏数据影响
+        cmd_buffer[0] = '\0'; 
+
         while (1) {
-            // [SIMPLIFIED] sys_getchar() 现在是阻塞的，直接调用即可
-            int c = sys_getchar();
+            int c;
+            while((c = sys_getchar()) == -1){
+            ; // 等待命令行输入    
+            } 
+            
+            /* ================= ADDED: ARROW KEYS HANDLING ================= */
+            if (c == 27) { // ESC sequence
+                int c2 = sys_getchar();
+                int c3 = sys_getchar();
+
+                if (c2 == 91) { // '['
+                    if (c3 == 65) { // 'A' -> Up Arrow
+                         if (history_count > 0 && history_current > 0) {
+                            history_current--;
+                            // 清除当前行
+                            while (buffer_ptr > 0) {
+                                buffer_ptr--;
+                                sys_write_ch('\b'); sys_write_ch(' '); sys_write_ch('\b');
+                            }
+                            // 复制历史命令
+                            strcpy(cmd_buffer, history_buffer[history_current % HISTORY_MAX]);
+                            buffer_ptr = strlen(cmd_buffer);
+                            // 显示
+                            printf("%s", cmd_buffer);
+                            sys_reflush();
+                        }
+                    } else if (c3 == 66) { // 'B' -> Down Arrow
+                        if (history_count > 0 && history_current < history_count) {
+                            // 清除当前行
+                            while (buffer_ptr > 0) {
+                                buffer_ptr--;
+                                sys_write_ch('\b'); sys_write_ch(' '); sys_write_ch('\b');
+                            }
+                            
+                            if (history_current < history_count - 1) {
+                                history_current++;
+                                strcpy(cmd_buffer, history_buffer[history_current % HISTORY_MAX]);
+                            } else {
+                                // 已经是最后一条，再按向下则清空（回到新行状态）
+                                history_current = history_count;
+                                cmd_buffer[0] = '\0';
+                            }
+
+                            buffer_ptr = strlen(cmd_buffer);
+                            printf("%s", cmd_buffer);
+                            sys_reflush();
+                        }
+                    }
+                }
+                continue; // 处理完方向键，跳过后续常规字符处理
+            }
+            /* ============================================================== */
 
             if (c == '\r' || c == '\n') {
                 // 回车，结束行输入
@@ -92,10 +168,10 @@ int main(void)
                 sys_reflush();
                 cmd_buffer[buffer_ptr] = '\0';
                 break;
-            } else if (c == 8 || c == 127) { // Backspace
+            } else if (c == 8 || c == 127) {
                 if (buffer_ptr > 0) {
                     buffer_ptr--;
-                    // [EFFICIENT] 使用新的 sys_write_ch 实现完美的视觉删除效果
+                    // 使用 sys_write_ch 实现删除效果
                     sys_write_ch('\b');
                     sys_write_ch(' ');
                     sys_write_ch('\b');
@@ -104,15 +180,19 @@ int main(void)
             } else { // Normal character
                 if (buffer_ptr < CMD_MAX_LENGTH - 1) {
                     cmd_buffer[buffer_ptr++] = c;
-                    // [EFFICIENT] 使用新的 sys_write_ch 直接回显，效率更高
+                    cmd_buffer[buffer_ptr] = '\0'; // [Fix] 动态保持字符串结尾，以便方向键切换时逻辑正确
                     sys_write_ch(c);
                     sys_reflush();
                 }
             }
         }
 
+        /* ================= ADDED: SAVE HISTORY ================= */
+        // 在解析和修改 buffer 之前，保存到历史记录
+        add_to_history(cmd_buffer);
+        /* ======================================================= */
+
         // 行输入结束，开始解析和执行命令
-        
         int is_background = 0;
         if (buffer_ptr > 0 && cmd_buffer[buffer_ptr - 1] == '&') {
             is_background = 1;
@@ -126,7 +206,7 @@ int main(void)
             continue;
         }
 
-        // 命令分发逻辑保持不变
+        // 交互界面，识别命令行
         if (strcmp(argv[0], "ps") == 0) {
             sys_ps();
         } else if (strcmp(argv[0], "clear") == 0) {

@@ -23,7 +23,7 @@ ENTRY(_start)
     # ld   fp, 0(sp)
     # addi sp, sp, 16
 
-    ret
+    # ret
     /* TODO: [p1-task3] enter main function */
 
     

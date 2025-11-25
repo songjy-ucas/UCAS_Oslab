@@ -47,7 +47,7 @@ uint64_t load_task_img(const char *taskname)
     }
 
     // 3. 从SD卡读取包含目标程序的所有扇区到临时缓冲区
-    bios_sd_read((uint32_t)read_buffer, num_sectors, start_sector);
+    bios_sd_read((uint32_t)(uintptr_t)read_buffer, num_sectors, start_sector);
 
     // 4. 从缓冲区中精确拷贝所需数据到最终加载地址
     // 计算目标数据在缓冲区内的起始偏移

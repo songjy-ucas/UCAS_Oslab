@@ -22,7 +22,7 @@ main:
 	// fence on all memory and I/O
 	fence
     // a0 is mhartid
-	bnez a0, secondary
+	bnez a0, secondary // 这里就是对主从核的分流，主核去搬kernel到内存，从核等待就可以
 
 	// [p1-task1] call BIOS to print string
 	la   a0, msg_boot
@@ -60,10 +60,12 @@ secondary:
 	 * 3. enable software interrupt for ipi
 	 */
 
+    // 从核在这里等待，直到主核发送IPI将其唤醒
 wait_for_wakeup:
 	wfi
-	j wait_for_wakeup
-
+    // 醒来后跳转到内核
+    li t0, kernel
+	jr t0
 	/************************************************************/
 stop:
 	j stop

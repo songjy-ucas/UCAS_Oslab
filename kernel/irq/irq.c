@@ -55,7 +55,7 @@ void init_exception()
     irq_table[IRQC_U_EXT  ] = handle_other;
     irq_table[IRQC_S_EXT  ] = handle_other;
     irq_table[IRQC_M_EXT  ] = handle_other;
-    setup_exception();
+    //setup_exception();
 }
 
 void handle_other(regs_context_t *regs, uint64_t stval, uint64_t scause)

@@ -192,9 +192,9 @@ int main(void)
         add_to_history(cmd_buffer);
         /* ======================================================= */
 
-        // 行输入结束，开始解析和执行命令
+        // 行输入结束，开始解析和执行命令 
         int is_background = 0;
-        if (buffer_ptr > 0 && cmd_buffer[buffer_ptr - 1] == '&') {
+        if (buffer_ptr > 0 && cmd_buffer[buffer_ptr - 1] == '&') { //根据是否有 & ,判断要不要默认执行sys_waitpid
             is_background = 1;
             cmd_buffer[--buffer_ptr] = '\0';
         }

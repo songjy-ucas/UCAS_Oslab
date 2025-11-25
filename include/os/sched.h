@@ -30,6 +30,7 @@
 #define INCLUDE_SCHEDULER_H_
 
 #include <type.h>
+#include <os/smp.h>
 #include <os/list.h>
 
 #define NUM_MAX_TASK 16
@@ -103,8 +104,10 @@ register pcb_t * current_running asm("tp");
 extern pid_t process_id;
 
 extern pcb_t pcb[NUM_MAX_TASK];
-extern pcb_t pid0_pcb;
-extern const ptr_t pid0_stack;
+// Pro3 TASK3 多核修改
+extern pcb_t pid0_pcb[NR_CPUS];
+extern const ptr_t pid0_stack_core0;
+extern const ptr_t pid0_stack_core1;
 
 extern void switch_to(pcb_t *prev, pcb_t *next);
 void do_scheduler(void);

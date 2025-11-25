@@ -5,6 +5,7 @@
 #include <os/mm.h>
 #include <os/loader.h>
 #include <os/string.h> 
+#include <os/smp.h>
 
 #include <csr.h>   
 #include <screen.h>
@@ -12,12 +13,11 @@
 #include <assert.h>
 
 pcb_t pcb[NUM_MAX_TASK];
-const ptr_t pid0_stack = INIT_KERNEL_STACK + PAGE_SIZE;
-pcb_t pid0_pcb = {
-    .pid = 0,
-    .kernel_sp = (ptr_t)pid0_stack,
-    .user_sp = (ptr_t)pid0_stack
-};
+// 每个核心有自己的 pid0 栈
+const ptr_t pid0_stack_core0 = INIT_KERNEL_STACK + PAGE_SIZE;
+const ptr_t pid0_stack_core1 = INIT_KERNEL_STACK + 2 * PAGE_SIZE;
+
+pcb_t pid0_pcb[NR_CPUS];
 
 LIST_HEAD(ready_queue);
 LIST_HEAD(sleep_queue);
@@ -40,34 +40,21 @@ void do_scheduler(void)
 
     // 1. 检查睡眠队列，唤醒到期的进程
     //    这个函数应该将睡眠结束的进程从 BLOCKED 状态改为 READY，并加入 ready_queue
+    // 1. 检查睡眠队列，唤醒到期的进程
     check_sleeping();
 
     // 2. 获取当前进程（即将被切换掉的进程）的指针
     pcb_t *prev = current_running;
 
     // 3. 根据 prev 进程的当前状态，决定如何处置它
-    //    这是本次修改的核心
     if (prev->status == TASK_RUNNING) {
-        // 状态为 RUNNING:
-        // 这意味着进程是因为时间片用完而被正常调度。
-        // 它仍然是可运行的，所以把它变更为 READY 状态，并放回就绪队列末尾。
         // 注意：idle 进程(pid0)是一个特例，它永不应进入就绪队列。
-        if (prev != &pid0_pcb) {
+        // [P3-TASK3] 这里的判断条件修改为只要不是任何一个核的 pid0
+        if (prev != &pid0_pcb[0] && prev != &pid0_pcb[1]) {
             prev->status = TASK_READY;
             list_add_tail(&prev->list, &ready_queue);
         }
-    } else if (prev->status == TASK_BLOCKED) {
-        // 状态为 BLOCKED:
-        // 这意味着进程在运行中调用了阻塞操作（如 do_block, do_sleep）。
-        // 它正在等待某个事件，因此不应该被放回就绪队列。
-        // 我们在这里什么都不做，让它留在它自己的等待队列里（如 sleep_queue）。
-    } else if (prev->status == TASK_EXITED) {
-        // 状态为 EXITED:
-        // 进程已经执行完毕并调用了 do_exit。
-        // 它不应该再被调度。我们在这里什么都不做。
-        // 其 PCB 资源最终会由父进程的 waitpid 或其他机制回收。
     }
-    // 注意：prev->status 不应该是 READY，因为它刚刚还在运行。
 
     // 4. 从就绪队列中选择下一个要运行的进程
     pcb_t *next;
@@ -77,8 +64,9 @@ void do_scheduler(void)
         // 将其从就绪队列中移除
         list_del(ready_queue.next);
     } else {
-        // 如果就绪队列为空，说明当前没有其他任务可运行，只能运行 idle 任务
-        next = &pid0_pcb;
+        // [P3-TASK3] 获取当前 CPU ID，运行对应的 idle 任务
+        uint64_t cpu_id = get_current_cpu_id();
+        next = &pid0_pcb[cpu_id];
     }
 
     // 5. 更新 current_running 指针，并将新任务的状态设置为 RUNNING
@@ -86,10 +74,7 @@ void do_scheduler(void)
     current_running->status = TASK_RUNNING;
     
     // 6. 调用汇编实现的 switch_to 函数，完成上下文切换
-    //    prev 的上下文将被保存，next 的上下文将被恢复
     switch_to(prev, next);
-    // TODO: [p2-task1] switch_to current_running
-
 }
 
 void do_sleep(uint32_t sleep_time)
@@ -150,7 +135,6 @@ extern void exit_trampoline();
 pid_t do_exec(char *name, int argc, char *argv[])
 {
     printk("do_exec: starting to load %s\n", name); // debug use
-    
     // 1. 查找空闲 PCB 
     pcb_t *new_pcb = find_free_pcb();
     if (new_pcb == NULL) {

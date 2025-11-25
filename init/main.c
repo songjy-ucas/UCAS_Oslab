@@ -11,6 +11,7 @@
 #include <os/mm.h>
 #include <os/time.h>
 #include <os/list.h>
+#include <os/smp.h>
 #include <sys/syscall.h>
 #include <screen.h>
 #include <printk.h>
@@ -34,7 +35,11 @@ task_info_t tasks[TASK_MAXNUM];
 char name_buffer[TASK_NAME_LEN];
 
 extern pcb_t pcb[NUM_MAX_TASK];
-extern pcb_t pid0_pcb; // 内核 idle 任务的 PCB
+// [P3-TASK3] pid0_pcb 变为数组
+extern pcb_t pid0_pcb[NR_CPUS];
+
+// [P3-TASK3] 用于多核同步的标志位
+volatile int is_init_finished = 0;
 
  // static int parse_command(char *buffer, char *argv[]); // 复用上一版的命令行解析器
  // static void execute_task(const char *task_name); // 复用上一版的任务执行器
@@ -174,7 +179,6 @@ static void init_pcb(void)
 
     /* 加载用户任务并初始化它们的 PCB */
     const char *task_names[] = {"shell"};
-    int num_user_tasks = sizeof(task_names) / sizeof(const char *);
 
         int pcb_idx = 1; // pcb[0] 留给 idle 任务
         pcb[pcb_idx].pid = process_id++;
@@ -201,14 +205,22 @@ static void init_pcb(void)
       
         list_add_tail(&pcb[pcb_idx].list, &ready_queue);
     
-    /* 初始化 pid0 (idle 任务) 并设置 current_running */
-    pid0_pcb.pid = 0; // pid0 的 pid 应该是0
-    pid0_pcb.status = TASK_RUNNING;
-    pid0_pcb.kernel_sp = (reg_t)pid0_stack ;
-    list_init(&pid0_pcb.list);
+    /* [P3-TASK3] 初始化 Core 0 和 Core 1 的 idle 任务 */
+    // Core 0
+    pid0_pcb[0].pid = 0;
+    pid0_pcb[0].status = TASK_RUNNING;
+    pid0_pcb[0].kernel_sp = (reg_t)pid0_stack_core0;
+    list_init(&pid0_pcb[0].list);
+
+    // Core 1
+    pid0_pcb[1].pid = 0;
+    pid0_pcb[1].status = TASK_RUNNING;
+    pid0_pcb[1].kernel_sp = (reg_t)pid0_stack_core1;
+    list_init(&pid0_pcb[1].list);
     
-    // 设置 current_running 的初始值
-    current_running = &pid0_pcb;
+    // 设置 current_running 的初始值，根据当前 CPU ID
+    uint64_t cpu_id = get_current_cpu_id();
+    current_running = &pid0_pcb[cpu_id];
 
 }
 
@@ -255,38 +267,79 @@ static void init_syscall(void)
 
 int main(int argc, char *argv[])
 {   
-    short num_tasks = (short)argc;
-    short task_info_start_sector = (short)(uintptr_t)argv;
-    bss_check();
-    init_jmptab();
-    init_task_info(num_tasks, task_info_start_sector);
-    init_pcb();
-    asm volatile("mv tp, %0" : : "r" (current_running));
-    time_base = bios_read_fdt(TIMEBASE);
-    init_locks();
-    init_barriers();   
-    init_conditions();
-    printk("> [INIT] PCB initialization succeeded.\n");
-    printk("> [INIT] Lock mechanism initialization succeeded.\n");
+   // [P3-TASK3] 获取当前核心 ID
+    uint64_t cpu_id = get_current_cpu_id();
 
-    asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+    if (cpu_id == 0) {
+        // ============ Core 0 初始化流程 ============
+        
+        // 1. 初始化全局数据结构
+        smp_init(); // 初始化大内核锁
+        
+        short num_tasks = (short)argc;
+        short task_info_start_sector = (short)(uintptr_t)argv;
+        bss_check();
+        init_jmptab();
+        init_task_info(num_tasks, task_info_start_sector);
+        
+        // init_pcb 会初始化两个核的 pid0_pcb，并设置 Core 0 的 current_running
+        init_pcb(); 
+        
+        // 设置 tp 寄存器指向 Core 0 的 current_running
+        asm volatile("mv tp, %0" : : "r" (current_running));
+        
+        time_base = bios_read_fdt(TIMEBASE);
+        init_locks();
+        init_barriers();   
+        init_conditions();
+        init_mbox(); 
 
-    init_exception();
-    printk("> [INIT] Interrupt processing initialization succeeded.\n");
-    init_syscall();
-    printk("> [INIT] System call initialized successfully.\n");
-    init_screen();
-    printk("> [INIT] SCREEN initialization succeeded.\n");
-    // 设置初始时钟中断
-    bios_set_timer(get_ticks()+TIMER_INTERVAL);
+        printk("> [INIT] PCB initialization succeeded.\n");
+        printk("> [INIT] Lock mechanism initialization succeeded.\n");
 
-    // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
+        asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+
+        init_exception();
+        printk("> [INIT] Interrupt processing initialization succeeded.\n");
+        init_syscall();
+        printk("> [INIT] System call initialized successfully.\n");
+        init_screen();
+        printk("> [INIT] SCREEN initialization succeeded.\n");
+        
+        // 设置初始时钟中断
+        bios_set_timer(get_ticks()+TIMER_INTERVAL);
+
+        // 2. 唤醒 Core 1
+        wakeup_other_hart();
+        
+        // 3. 标记初始化完成，允许 Core 1 继续执行
+        is_init_finished = 1;
+
+    } else {
+        // ============ Core 1 初始化流程 ============
+        
+        // 1. 等待 Core 0 完成全局初始化
+        while (is_init_finished == 0);
+
+        // 2. 设置 Core 1 的环境
+        // init_pcb 已经初始化了 pid0_pcb[1]，这里设置 current_running
+        current_running = &pid0_pcb[1];
+        asm volatile("mv tp, %0" : : "r" (current_running));
+
+        asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+
+        // 设置初始时钟中断
+        bios_set_timer(get_ticks()+TIMER_INTERVAL);
+        
+        printk("> [INIT] Core 1 started.\n");
+    }
+
+    // 设置异常入口 stvec,并开全局中断
+    setup_exception();
+
+    // Infinite while loop
     while (1)
     {
-        // If you do non-preemptive scheduling, it's used to surrender control
-        //do_scheduler();
-
-        // If you do preemptive scheduling, they're used to enable CSR_SIE and wfi
         enable_preempt();
         asm volatile("wfi");
     }

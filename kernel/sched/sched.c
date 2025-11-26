@@ -6,6 +6,7 @@
 #include <os/loader.h>
 #include <os/string.h> 
 #include <os/smp.h>
+#include <os/debug.h>
 
 #include <csr.h>   
 #include <screen.h>
@@ -89,6 +90,12 @@ void do_scheduler(void)
     next->core_id = cpu_id; // [Task 4] 更新任务当前所在的核
     current_running = next;
     
+    klog("Scheduler on core %d picked task '%s'(PID %d) with mask 0x%x\n",
+         cpu_id,
+         (next == &pid0_pcb[0] || next == &pid0_pcb[1]) ? "idle" : "user_task",
+         next->pid,
+         next->mask);
+
     // 7. 调用汇编实现的 switch_to 函数，完成上下文切换
     switch_to(prev, next);
 }

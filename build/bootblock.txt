@@ -8,7 +8,7 @@ Disassembly of section .text:
     50200000:	0ff0000f          	fence
     50200004:	e529                	bnez	a0,5020004e <secondary>
     50200006:	00000517          	auipc	a0,0x0
-    5020000a:	05650513          	addi	a0,a0,86 # 5020005c <__DATA_BEGIN__>
+    5020000a:	06e50513          	addi	a0,a0,110 # 50200074 <__DATA_BEGIN__>
     5020000e:	48a5                	li	a7,9
     50200010:	501502b7          	lui	t0,0x50150
     50200014:	9282                	jalr	t0
@@ -30,10 +30,19 @@ Disassembly of section .text:
     5020004c:	8282                	jr	t0
 
 000000005020004e <secondary>:
-    5020004e:	10500073          	wfi
-    50200052:	502012b7          	lui	t0,0x50201
-    50200056:	8282                	jr	t0
+    5020004e:	10401073          	csrw	sie,zero
+    50200052:	14401073          	csrw	sip,zero
+    50200056:	502012b7          	lui	t0,0x50201
+    5020005a:	10529073          	csrw	stvec,t0
+    5020005e:	4289                	li	t0,2
+    50200060:	1042a073          	csrs	sie,t0
+    50200064:	4289                	li	t0,2
+    50200066:	1002a073          	csrs	sstatus,t0
 
-0000000050200058 <stop>:
-    50200058:	a001                	j	50200058 <stop>
-    5020005a:	0001                	nop
+000000005020006a <wait_for_wakeup>:
+    5020006a:	10500073          	wfi
+    5020006e:	bff5                	j	5020006a <wait_for_wakeup>
+
+0000000050200070 <stop>:
+    50200070:	a001                	j	50200070 <stop>
+    50200072:	0001                	nop

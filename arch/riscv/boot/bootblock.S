@@ -1,8 +1,8 @@
 #include <asm/biosdef.h>
+#include <csr.h>
 
 // os size location (os_size could be sectors [p1-task3] or bytes [p1-task4])
 .equ os_size_loc, 0x502001fc
-// [p1-task4] 元数据在bootblock中的位置
 .equ task_num_loc, 0x502001fa       
 .equ task_info_loc, 0x502001f8     
 
@@ -59,15 +59,31 @@ secondary:
 	 * 2. let stvec pointer to kernel_main
 	 * 3. enable software interrupt for ipi
 	 */
+    // 1. 屏蔽所有中断 (清除 sie 寄存器)
+    csrw sie, zero
+    csrw sip, zero
 
-    // 从核在这里等待，直到主核发送IPI将其唤醒
+    // 2. 设置 stvec 指向内核入口 (kernel = 0x50201000)
+    // 这样当收到 IPI 时，硬件会直接跳转到 head.S 的 _start
+    li t0, kernel
+    csrw stvec, t0
+
+    // 3. 开启软件中断 (SSIE)
+    // sie 寄存器的 bit 1 是 SSIE (Supervisor Software Interrupt Enable)
+    li t0, 2
+    csrs sie, t0
+
+    // 4. 开启全局中断 (sstatus.sie)
+    // sstatus 寄存器的 bit 1 是 SIE (Supervisor Interrupt Enable)
+    li t0, 2
+    csrs sstatus, t0
+
 wait_for_wakeup:
 	wfi
-    // 醒来后跳转到内核
-    li t0, kernel
-	jr t0
+	j wait_for_wakeup
+
 	/************************************************************/
+
 stop:
 	j stop
 	nop
-		

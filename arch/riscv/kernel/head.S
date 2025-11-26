@@ -43,12 +43,6 @@ bss_done:
 
 stack_init:
 
-  # li sp, INIT_KERNEL_STACK   // 0x50500000
-  
-  # csrr a0, mhartid           // 读取 hartid
-  # li t0, PAGE_SIZE           // 4096
-  # mul t0, t0, a0             // t0 = hartid * 4096
-  # add sp, sp, t0             // sp = Base + Offset
   li sp, INIT_KERNEL_STACK   // 0x50500000
   li t0, PAGE_SIZE           // 4096
 

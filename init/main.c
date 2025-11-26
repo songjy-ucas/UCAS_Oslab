@@ -263,6 +263,8 @@ int main(int argc, char *argv[])
         // 1. 初始化全局数据结构
         smp_init(); // 初始化大内核锁
         
+        lock_kernel(); // 上大内核锁，防止 Core 1 提前运行
+
         short num_tasks = (short)argc;
         short task_info_start_sector = (short)(uintptr_t)argv;
         bss_check();
@@ -293,37 +295,61 @@ int main(int argc, char *argv[])
         init_screen();
         printk("> [INIT] SCREEN initialization succeeded.\n");
         
-        // 设置初始时钟中断
-        bios_set_timer(get_ticks()+TIMER_INTERVAL);
+        // // 设置初始时钟中断
+        // bios_set_timer(get_ticks()+TIMER_INTERVAL);
 
         // 2. 唤醒 Core 1
+        unlock_kernel(); // 释放大内核锁，允许 Core 1 继续执行
         wakeup_other_hart();
         
         // 3. 标记初始化完成，允许 Core 1 继续执行
-        is_init_finished = 1;
+        is_init_finished = 0;
+        while(is_init_finished == 0) {
+           asm volatile("nop"); // 稍微缓一下，避免总线占满
+        }
+
+    //    lock_kernel();
+
+        asm volatile("fence w, r" ::: "memory"); // 强制写屏障，确保 1 被写入主存
 
     } else {
+        lock_kernel();
+        
         // ============ Core 1 初始化流程 ============
         
-        // 1. 等待 Core 0 完成全局初始化
-        while (is_init_finished == 0);
+        while (1) {
+           // 每次读取前加屏障，或者读取后加屏障，确保读到最新值
+           // 但最简单的是只要变量是 volatile 的，配合适当的 fence
+           if (is_init_finished == 0) break;
+           asm volatile("nop"); // 稍微缓一下，避免总线占满
+        }
+
+    // 确保看到 Core 0 在修改标志位之前做的所有内存操作
+    asm volatile("fence r, r" ::: "memory"); 
 
         // 2. 设置 Core 1 的环境
         // init_pcb 已经初始化了 pid0_pcb[1]，这里设置 current_running
         current_running = &pid0_pcb[1];
         asm volatile("mv tp, %0" : : "r" (current_running));
-
+        printk("> [INIT] Core 1 ready to started.\n");
         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
 
-        // 设置初始时钟中断
-        bios_set_timer(get_ticks()+TIMER_INTERVAL);
+        // // 设置初始时钟中断
+        // bios_set_timer(get_ticks()+TIMER_INTERVAL);
         
-        printk("> [INIT] Core 1 started.\n");
+        printk("> [INIT] Core 1 started.\n"); 
+        // Core 0 在赋值完后：
+        is_init_finished = 1;
+        unlock_kernel();
     }
 
-    // 设置异常入口 stvec,并开全局中断
-    setup_exception();
 
+    // 设置初始时钟中断
+    bios_set_timer(get_ticks()+TIMER_INTERVAL);
+    // 设置异常入口 stvec,并开全局中断
+    //lock_kernel();
+    setup_exception();
+    //unlock_kernel();
     // Infinite while loop
     while (1)
     {
@@ -333,3 +359,205 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
+
+
+
+// // [P3-TASK3] 用于多核同步的标志位
+// // 0: 未初始化, 1: Core 0 完成全局初始化
+// volatile int is_core0_init_finished = 0;
+
+// int main(int argc, char *argv[])
+// {   
+//     // 获取当前核心 ID
+//     uint64_t cpu_id = get_current_cpu_id();
+
+//     if (cpu_id == 0) {
+//         // ============ Core 0 ============
+        
+//         // 1. 初始化全局资源
+//         smp_init();      // 初始化大内核锁等
+//         lock_kernel();   // 持有锁进行初始化
+
+//         short num_tasks = (short)argc;
+//         short task_info_start_sector = (short)(uintptr_t)argv;
+        
+//         bss_check();
+//         init_jmptab();
+//         init_task_info(num_tasks, task_info_start_sector);
+        
+//         // 初始化 PCB、页表、锁、中断向量等
+//         init_pcb(); // Shell 任务在这里被创建并加入 ready_queue
+        
+//         // 设置 Core 0 的 current_running
+//         asm volatile("mv tp, %0" : : "r" (current_running));
+
+//         time_base = bios_read_fdt(TIMEBASE);
+//         init_locks();
+//         init_barriers();   
+//         init_conditions();
+//         init_mbox(); 
+
+//         printk("> [INIT] Core 0: Global initialization succeeded.\n");
+
+//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+
+//         init_exception();
+//         init_syscall();
+//         init_screen();
+        
+//         // 2. 唤醒 Core 1
+//         // 在唤醒前，必须确保内存写入对 Core 1 可见
+//         is_core0_init_finished = 1;
+//         asm volatile("fence w, w" ::: "memory"); // 写屏障
+        
+//         wakeup_other_hart(); // 调用 SBI 唤醒 Core 1
+        
+//         // 3. 设置 Core 0 的时钟和中断
+//         bios_set_timer(get_ticks() + TIMER_INTERVAL);
+//         setup_exception(); // 设置 stvec
+        
+//         unlock_kernel(); // 释放锁，允许 Core 1 运行
+        
+//         // 4. 重要：Core 0 主动让出 CPU，进入调度器
+//         // 这样调度器发现 shell 在 ready_queue 里，就会运行 shell
+//         enable_preempt();
+//         do_scheduler();
+
+//     } else {
+//         // ============ Core 1 ============
+        
+//         // 1. 等待 Core 0 完成全局初始化
+//         // 即使被唤醒了，也要确认 Core 0 已经把该初始化的都初始化了
+//         while (is_core0_init_finished == 0) {
+//              asm volatile("nop");
+//         }
+//         asm volatile("fence r, r" ::: "memory"); // 读屏障，确保后续读到的是最新数据
+
+//         lock_kernel(); //以此保证打印和后续初始化的原子性(可选，视具体实现而定)
+
+//         // 2. 设置 Core 1 的环境
+//         // init_pcb 已经在 Core 0 里初始化了 pid0_pcb[1]
+//         current_running = &pid0_pcb[1];
+//         asm volatile("mv tp, %0" : : "r" (current_running));
+        
+//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+
+//         // 3. 设置 Core 1 的时钟和中断
+//         bios_set_timer(get_ticks() + TIMER_INTERVAL);
+//         setup_exception(); // 设置 stvec
+        
+//         printk("> [INIT] Core 1 started.\n");
+        
+//         unlock_kernel();
+
+//         // 4. Core 1 主动让出 CPU
+//         // 此时 Shell 应该已经被 Core 0 抢走了，Core 1 会去跑 Idle 任务
+//         enable_preempt();
+//         do_scheduler();
+//     }
+
+//     // 理论上永远不会运行到这里
+//     while (1) {
+//         enable_preempt();
+//         asm volatile("wfi");
+//     }
+
+//     return 0;
+// }
+
+
+
+
+
+// int main(int argc, char *argv[])
+// {   
+
+//     // short num_tasks = (short)argc;
+//     // short task_info_start_sector = (short)(uintptr_t)argv;
+
+//     // bss_check();
+//     // init_jmptab();
+   
+//     // init_task_info(num_tasks, task_info_start_sector);
+
+//     // init_pcb();
+//     // printk("> [INIT] PCB initialization succeeded.\n");
+//     // asm volatile("mv tp, %0" : : "r" (current_running));
+
+//     // time_base = bios_read_fdt(TIMEBASE);
+//     // init_locks();
+//     // init_barriers();  
+//     // init_conditions();
+//     // printk("> [INIT] Lock mechanism initialization succeeded.\n");
+
+//     // asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+
+//     // init_exception();
+//     // printk("> [INIT] Interrupt processing initialization succeeded.\n");
+//     // init_syscall();
+//     // printk("> [INIT] System call initialized successfully.\n");
+//     // init_screen();
+//     // printk("> [INIT] SCREEN initialization succeeded.\n");
+
+//     uint64_t cpu_id = get_current_cpu_id();
+
+//     if (cpu_id == 0) {
+//         // =============== 主核 (Master) ===============
+//         // 1. 初始化系统
+//         bss_check();
+//         init_jmptab();
+//         init_task_info((short)argc, (short)(uintptr_t)argv);
+//         init_pcb(); // 初始化包括两个 idle 在内的所有 PCB
+
+//         // 设置主核 current_running
+//         current_running = &pid0_pcb[0];
+//         asm volatile("mv tp, %0" : : "r" (current_running));
+//         time_base = bios_read_fdt(TIMEBASE);
+//         init_locks();
+//         smp_init();      // 初始化内核锁
+//         init_barriers();
+//         init_conditions();
+        
+//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+
+//         init_exception(); // 设置主核 stvec
+//         init_syscall();
+//         init_screen();
+
+//         printk("> [INIT] Core 0 initialized. Waking up Core 1...\n");
+
+//         // 2. 唤醒从核
+//         wakeup_other_hart();
+
+//     } else {
+//         // =============== 从核 (Slave) ===============
+//         // 1. 设置从核 current_running
+//         current_running = &pid0_pcb[1];
+//         asm volatile("mv tp, %0" : : "r" (current_running));
+
+//         // 2. 设置从核异常向量 (stvec)
+//         // setup_exception(); // 这里的 setup_exception 实际上是 trap.S 里的 helper，设置 stvec
+
+//         // 3. 允许 SUM
+//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
+        
+//         printk("> [INIT] Core 1 started running.\n");
+//     }
+
+//     bios_set_timer(get_ticks()+TIMER_INTERVAL);
+//     setup_exception();
+
+//     // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
+//     while (1)
+//     {
+//         // If you do non-preemptive scheduling, it's used to surrender control
+//         //do_scheduler();
+
+//         // If you do preemptive scheduling, they're used to enable CSR_SIE and wfi
+//         enable_preempt();
+//         asm volatile("wfi");
+//     }
+
+//     return 0;
+// }

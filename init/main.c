@@ -161,6 +161,15 @@ void init_pcb_stack(
     // 保存最终的内核栈顶指针到 PCB
     pcb->kernel_sp = (reg_t)pt_switchto;
     pcb->user_sp = user_stack;
+
+    // [Task 4] Mask Initialization
+    // 默认情况下，继承父进程的 mask，如果是第一个进程则允许所有核
+    if (current_running) {
+        pcb->mask = current_running->mask;
+    } else {
+        pcb->mask = 0x3; // 允许 Core 0 和 Core 1
+    }
+    pcb->core_id = -1; // 尚未运行
 }
 
 static void init_pcb(void)
@@ -260,6 +269,8 @@ static void init_syscall(void)
     syscall[SYSCALL_MBOX_CLOSE] = (long (*)())do_mbox_close;
     syscall[SYSCALL_MBOX_SEND]  = (long (*)())do_mbox_send;
     syscall[SYSCALL_MBOX_RECV]  = (long (*)())do_mbox_recv;
+
+    syscall[SYSCALL_TASKSET]    = (long (*)())do_taskset;
 
 }
 /************************************************************/

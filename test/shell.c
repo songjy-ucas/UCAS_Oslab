@@ -56,6 +56,27 @@ static void add_to_history(const char *command)
 }
 /* ============================================================== */
 
+/* ================= [Task 4] 辅助函数：十六进制字符串转整数 ================= */
+int xtoi(const char *str) {
+    int val = 0;
+    // 跳过 "0x" 或 "0X" 前缀
+    if (str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) {
+        str += 2;
+    }
+    while (*str) {
+        char c = *str;
+        int digit;
+        if (c >= '0' && c <= '9') digit = c - '0';
+        else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+        else break; // 非法字符停止解析
+        val = val * 16 + digit;
+        str++;
+    }
+    return val;
+}
+
+
 int parse_command(char *buffer, char *argv[])
 {
     int argc = 0;
@@ -239,7 +260,44 @@ int main(void)
                     printf("Info: Cannot find process with pid %d!\n", pid_to_kill);
                 }
             }
-        } else {
+        } else if(strcmp(argv[0], "taskset") == 0) {
+            if (argc < 3) {
+                printf("Usage: taskset -p mask pid OR taskset mask name [args...]\n");
+            } else {
+                // 模式 1: taskset -p mask pid
+                if (strcmp(argv[1], "-p") == 0) {
+                    if (argc < 4) {
+                         printf("Usage: taskset -p mask pid\n");
+                    } else {
+                        int mask = xtoi(argv[2]);
+                        int pid = atoi(argv[3]);
+                        sys_taskset(mask, pid);
+                        printf("Info: set pid %d mask to 0x%x\n", pid, mask);
+                    }
+                } 
+                // 模式 2: taskset mask name [args...]
+                else {
+                    int mask = xtoi(argv[1]);
+                    // argv[2] 是程序名，参数从 argv[2] 开始传
+                    // 计算传递给 sys_exec 的 argc: 总参数减去 "taskset" 和 "mask" 两个
+                    pid_t pid = sys_exec(argv[2], argc - 2, &argv[2]);
+                    
+                    if (pid != -1) {
+                        // [关键点] 进程创建后立即设置亲和性
+                        sys_taskset(mask, pid);
+                        printf("Info: execute taskset successfully, pid = %d, mask = 0x%x\n", pid, mask);
+                        
+                        // 依然遵循 & 后台运行规则
+                        if (!is_background) {
+                            sys_waitpid(pid);
+                        }
+                    } else {
+                        printf("Error: failed to exec %s\n", argv[2]);
+                    }
+                }
+            }
+        }        
+        else {
             printf("Error: Unknown command '%s'\n", argv[0]);
         }
 

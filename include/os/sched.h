@@ -91,6 +91,12 @@ typedef struct pcb
     /* time(seconds) to wake up sleeping PCB */
     uint64_t wakeup_time;
 
+    /* [Task 4] process affinity */
+    uint32_t mask;    // 这里的每一位代表一个核，0x1=核0, 0x2=核1, 0x3=两核皆可
+
+    /* [Task 3/4] current core id (用于ps显示) */
+    int core_id;      // 记录当前或上一次运行该任务的核ID
+
 } pcb_t;
 
 /* ready queue to run */
@@ -132,6 +138,9 @@ extern int do_kill(pid_t pid);
 extern int do_waitpid(pid_t pid);
 extern void do_process_show();
 extern pid_t do_getpid();
+
+/* Pro3 TASK4 */
+extern void do_taskset(int mask, int pid);
 /************************************************************/
 
 #endif

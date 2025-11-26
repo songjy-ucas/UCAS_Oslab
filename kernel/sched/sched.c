@@ -38,8 +38,9 @@ void do_scheduler(void)
 
     // TODO: [p2-task1] Modify the current_running pointer.
 
-    // 1. 检查睡眠队列，唤醒到期的进程
-    //    这个函数应该将睡眠结束的进程从 BLOCKED 状态改为 READY，并加入 ready_queue
+    // 0. 获取当前核 ID (放在最前面，因为后面多次用到)
+    uint64_t cpu_id = get_current_cpu_id();
+
     // 1. 检查睡眠队列，唤醒到期的进程
     check_sleeping();
 
@@ -48,32 +49,47 @@ void do_scheduler(void)
 
     // 3. 根据 prev 进程的当前状态，决定如何处置它
     if (prev->status == TASK_RUNNING) {
-        // 注意：idle 进程(pid0)是一个特例，它永不应进入就绪队列。
-        // [P3-TASK3] 这里的判断条件修改为只要不是任何一个核的 pid0
+        // 注意：任何一个核的 idle 进程(pid0)都不应进入就绪队列
         if (prev != &pid0_pcb[0] && prev != &pid0_pcb[1]) {
             prev->status = TASK_READY;
+            // 将其加入就绪队列队尾
             list_add_tail(&prev->list, &ready_queue);
         }
     }
 
-    // 4. 从就绪队列中选择下一个要运行的进程
-    pcb_t *next;
-    if (!list_empty(&ready_queue)) {
-        // 如果就绪队列不为空，取出队头的任务作为下一个
-        next = list_entry(ready_queue.next, pcb_t, list);
-        // 将其从就绪队列中移除
-        list_del(ready_queue.next);
-    } else {
-        // [P3-TASK3] 获取当前 CPU ID，运行对应的 idle 任务
-        uint64_t cpu_id = get_current_cpu_id();
+    // 4. [Task 4 修改核心] 从就绪队列中遍历，寻找符合当前核 mask 要求的任务
+    pcb_t *next = NULL;
+    list_node_t *current_node = ready_queue.next;
+
+    // 遍历 ready_queue
+    while (current_node != &ready_queue) {
+        pcb_t *candidate = list_entry(current_node, pcb_t, list);
+
+        // [Task 4] 检查亲和性 (Affinity Check)
+        // 逻辑：如果任务的 mask 的第 cpu_id 位是 1，说明允许在该核运行
+        if (candidate->mask & (1 << cpu_id)) {
+            next = candidate;
+            // 找到了合适的任务，将其从队列中移除
+            list_del(current_node);
+            break; // 停止查找
+        }
+
+        // 如果当前任务不满足 mask 要求，继续看下一个
+        current_node = current_node->next;
+    }
+
+    // 5. 如果队列为空，或者队列里所有任务都不允许在当前核运行
+    if (next == NULL) {
+        // 运行当前核对应的 idle 任务
         next = &pid0_pcb[cpu_id];
     }
 
-    // 5. 更新 current_running 指针，并将新任务的状态设置为 RUNNING
+    // 6. 更新 current_running 指针，状态，以及当前运行核心
+    next->status = TASK_RUNNING;
+    next->core_id = cpu_id; // [Task 4] 更新任务当前所在的核
     current_running = next;
-    current_running->status = TASK_RUNNING;
     
-    // 6. 调用汇编实现的 switch_to 函数，完成上下文切换
+    // 7. 调用汇编实现的 switch_to 函数，完成上下文切换
     switch_to(prev, next);
 }
 
@@ -379,27 +395,32 @@ void do_process_show()
             // 将数字状态转换为可读的字符串
             switch (pcb[i].status) {
                 case TASK_BLOCKED:
-                    status_str = "BLOCKED"; // 阻塞
+                    status_str = "BLOCKED"; 
                     break;
                 case TASK_RUNNING:
-                    status_str = "RUNNING"; // 正在运行
+                    status_str = "RUNNING"; 
                     break;
                 case TASK_READY:
-                    status_str = "READY";   // 就绪
+                    status_str = "READY  ";   // 加空格是为了对齐美观
                     break;
                 default:
                     status_str = "UNKNOWN";
                     break;
             }
             
-            // 打印信息
-            printk("[%d] PID : %d\tSTATUS : %s\n", 
+            // [Task 4] 打印扩展信息：mask 和 core_id
+            // 注意：只有 RUNNING 状态的任务，Running on core 才有实际意义
+            // 但为了调试方便，通常都打印出来，或者显示上次运行的核
+            printk("[%d] PID : %d  STATUS : %s  mask : 0x%x  Running on core %d\n", 
                    i,            
                    pcb[i].pid,   
-                   status_str);  
+                   status_str,
+                   pcb[i].mask,
+                   pcb[i].core_id);  
         }
     }
 }
+
 // 这是 do_getpid 的实现，非常简单，返回当前运行进程的 PID
 pid_t do_getpid()
 {
@@ -766,4 +787,25 @@ int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
 
     spin_lock_release(&mbox->lock);
     return msg_length;
+}
+
+// [Task 4] 实现 sys_taskset
+// 如果 pid 为 0，修改当前进程；否则修改指定 pid 进程
+void do_taskset(int mask, int pid)
+{
+    // 如果 mask 为 0，这通常是非法的
+    if (mask == 0) return;
+
+    if (pid == 0) {
+        current_running->mask = mask;
+    } else {
+        // 遍历进程表找到对应 pid
+        // 假设 NUM_MAX_TASK 是最大支持任务数
+        for (int i = 0; i < NUM_MAX_TASK; i++) {
+            if (pcb[i].pid == pid && pcb[i].status != TASK_EXITED) {
+                pcb[i].mask = mask;
+                return;
+            }
+        }
+    }
 }

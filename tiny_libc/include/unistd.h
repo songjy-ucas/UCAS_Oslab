@@ -53,4 +53,7 @@ int sys_mbox_send(int mbox_idx, void *msg, int msg_length);
 int sys_mbox_recv(int mbox_idx, void *msg, int msg_length);
 /************************************************************/
 
+/* Pro3 TASK4 ADD*/
+void sys_taskset(int mask, int pid);
+
 #endif

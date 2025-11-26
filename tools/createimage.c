@@ -29,7 +29,7 @@ typedef struct {
     uint64_t entry_point;
 } task_info_t;
 
-#define TASK_MAXNUM 16
+#define TASK_MAXNUM 32 // Pro3 task5 要加用户程序，超过了16个
 static task_info_t taskinfo[TASK_MAXNUM];
 
 //批处理任务

@@ -97,30 +97,6 @@ static void init_task_info(short num_tasks, short task_info_start_sector)
     bios_sd_read((uint32_t)(uintptr_t)tasks, num_info_sectors, task_info_start_sector);
 }
 
-// static void get_str(char *buffer, int max_len)
-// {
-//     int i = 0;
-//     while (i < max_len - 1) {
-//         int c = -1;
-//         while(c == -1) {
-//             c = bios_getchar();
-//         }
-//         if (c == '\r' || c == '\n') {
-//             break;
-//         } else if (c == 8 || c == 127) {
-//             if (i > 0) {
-//                 i--;
-//                 bios_putchar(8); bios_putchar(' '); bios_putchar(8);
-//             }
-//         } else {
-//             buffer[i++] = (char)c;
-//             bios_putchar((char)c);
-//         }
-//     }
-//     buffer[i] = '\0';
-//     bios_putstr("\n\r");
-// }
-
 /************************************************************/
 void init_pcb_stack(
     ptr_t kernel_stack, ptr_t user_stack, ptr_t entry_point,

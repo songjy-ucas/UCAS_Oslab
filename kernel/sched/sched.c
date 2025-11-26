@@ -150,7 +150,7 @@ extern void exit_trampoline();
 // 它从磁盘(镜像)读取程序，为其分配内存(栈)，设置好运行环境(寄存器)，最后放入就绪队列等待CPU运行。
 pid_t do_exec(char *name, int argc, char *argv[])
 {
-    printk("do_exec: starting to load %s\n", name); // debug use
+    // printk("do_exec: starting to load %s\n", name); // debug use
     // 1. 查找空闲 PCB 
     pcb_t *new_pcb = find_free_pcb();
     if (new_pcb == NULL) {

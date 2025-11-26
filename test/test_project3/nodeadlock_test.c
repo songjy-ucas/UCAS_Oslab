@@ -154,10 +154,10 @@ int main(int argc, char *argv[])
     printf("--- No-Deadlock Test Start ---\n");
 
 
-    int prem1 = sys_mbox_open("mbox1");
-    int prem2 = sys_mbox_open("mbox2");
-    sys_mbox_close(prem1);
-    sys_mbox_close(prem2); // 先删掉之前的，重新建立mbox
+ //   int prem1 = sys_mbox_open("mbox1");
+ //   int prem2 = sys_mbox_open("mbox2");
+ //   sys_mbox_close(prem1);
+ //   sys_mbox_close(prem2); // 先删掉之前的，重新建立mbox
     int m1 = sys_mbox_open("mbox1");
     int m2 = sys_mbox_open("mbox2");
 

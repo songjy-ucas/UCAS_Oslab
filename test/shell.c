@@ -100,12 +100,24 @@ int parse_command(char *buffer, char *argv[])
     return argc;
 }
 
+void print_logo() {
+    printf(" ::::::::   ::::::::  :::    ::: :::::::: :::      :::       \r\n");
+    printf(":+:    :+: :+:    :+: :+:    :+: :+:      :+:      :+:       \r\n");
+    printf("+:+        +:+        +:+    +:+ +:+      +:+      +:+       \r\n");
+    printf("+#++:++#++ +#++:++#++ +#++:++#++ +++++#   +#+      +#+       \r\n");
+    printf("       +#+        +#+ +#+    +#+ +#+      +#+      +#+       \r\n");
+    printf("#+#    #+# #+#    #+# #+#    #+# #+#      #+#      #+#       \r\n");
+    printf(" ########   ########  ###    ### ######## ######## ########  \r\n");
+    printf("                                                             \r\n");
+}
+
 
 int main(void)
 {
     char cmd_buffer[CMD_MAX_LENGTH];
     int buffer_ptr;
     sys_move_cursor(0, SHELL_BEGIN);
+    print_logo();
     printf("------------------- COMMAND -------------------\n");
     sys_reflush();
     while (1)
@@ -137,9 +149,11 @@ int main(void)
             
             /* ================= ADDED: ARROW KEYS HANDLING ================= */
             if (c == 27) { // ESC sequence
-                int c2 = sys_getchar();
-                int c3 = sys_getchar();
-
+                int c2, c3;
+                // 【修复】必须循环等待第二个字符，不能假设它已经到了
+                while((c2 = sys_getchar()) == -1); 
+                // 【修复】必须循环等待第三个字符
+                while((c3 = sys_getchar()) == -1); 
                 if (c2 == 91) { // '['
                     if (c3 == 65) { // 'A' -> Up Arrow
                          if (history_count > 0 && history_current > 0) {

@@ -295,6 +295,15 @@ int main(int argc, char *argv[])
         init_screen();
         printk("> [INIT] SCREEN initialization succeeded.\n");
         
+        printk("> [INIT] CPU #%u has entered kernel with VM!\n",
+            (unsigned int)get_current_cpu_id());
+        // TODO: [p4-task1 cont.] remove the brake and continue to start user processes.
+        kernel_brake();
+
+        // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
+        // NOTE: The function of sstatus.sie is different from sie's
+    
+
         // // 设置初始时钟中断
         // bios_set_timer(get_ticks()+TIMER_INTERVAL);
 

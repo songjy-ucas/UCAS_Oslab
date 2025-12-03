@@ -80,6 +80,9 @@ typedef struct pcb
     pid_t pid;
     pid_t parent_pid;
 
+    /* pgdir */
+    uintptr_t pgdir;
+
     /* BLOCK | READY | RUNNING */
     task_status_t status;
     int exit_code;
@@ -106,7 +109,8 @@ extern list_head ready_queue;
 extern list_head sleep_queue;
 
 /* current running task PCB */
-register pcb_t * current_running asm("tp");
+register pcb_t * current_running asm("tp"); // 告诉编译器用 tp 寄存器存放 current_running
+                                            // 不同的core有各自的tp寄存器
 extern pid_t process_id;
 
 extern pcb_t pcb[NUM_MAX_TASK];

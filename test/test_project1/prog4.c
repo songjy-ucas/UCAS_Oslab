@@ -12,9 +12,9 @@ int main()
     long long final_result = (long long)current_value * current_value;
     *shared_data = (int)final_result;
     bios_putstr("I am prog4. Input: ");
-    print_int(current_value);
+    printf(current_value);
     bios_putstr(", Final result: ");
-    print_int((int)final_result); // 使用 print_int
+    printf((int)final_result); // 使用 print_int
     bios_putstr("\n\r");
 
     return 0;

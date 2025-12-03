@@ -166,29 +166,38 @@ pid_t do_exec(char *name, int argc, char *argv[])
     }
 
     // 2. 加载任务代码
+    // [P4-Task1] load_task_img 内部应该使用新的内存分配逻辑 (alloc_page_helper)
     uint64_t entry_point = load_task_img(name);
     if (entry_point == 0) {
         printk("Error: Task image '%s' not found!\n", name);
         return -1;
     }
 
-    // 3. 分配内核栈和用户栈
-    // 每个进程都有两个栈：
-    // - 内核栈：当进程通过系统调用或中断进入内核态时使用，保证内核安全。
-    // - 用户栈：进程在用户态跑代码、函数调用时使用。
-    // allocKernelPage/allocUserPage 分配物理内存页。
-    new_pcb->kernel_stack_base = allocKernelPage(1);
-    new_pcb->user_stack_base = allocUserPage(1);
-    
+    /* 
+     * [P4-Task1] 内存分配修改 
+     * 将 allocKernelPage/allocUserPage 统一替换为 allocPage
+     */
+    new_pcb->kernel_stack_base = allocPage(1); // 分配物理页作为内核栈
+    new_pcb->user_stack_base   = allocPage(1); // 分配物理页作为用户栈
+
     // 栈是向下生长的，所以栈顶指针 = 基地址 + 页大小
     ptr_t kernel_stack = new_pcb->kernel_stack_base + PAGE_SIZE;
-    ptr_t user_stack = new_pcb->user_stack_base + PAGE_SIZE;
+    
+    // [P4-Task1] 关键注意: 用户栈必须是用户虚拟地址 (USER_STACK_ADDR)
+    // 这里的 user_stack_base 是 allocPage 返回的内核 KVA (用于内核往里写参数)
+    // 在 new_pcb->user_stack_base 里存的是物理页 KVA
+    // 但是在 init_pcb_stack 传递给 TrapFrame 的 sp 必须是用户虚地址
+    
+    // 假设在 load_task_img 或 alloc_page_helper 中已经建立了映射：
+    // USER_STACK_ADDR -> user_stack_base (Physical Page)
+    // 如果没有，你需要手动 map:
+    // map_page_helper(USER_STACK_ADDR - PAGE_SIZE, kva2pa(new_pcb->user_stack_base), new_pcb->pgdir);
+    // 这里我们假设 user_stack_base 仅用于内核初始化参数
+    
+    ptr_t user_stack_kva = new_pcb->user_stack_base + PAGE_SIZE;
 
     // 4. 构造用户栈参数 (argc/argv)
-    // 这是一个非常有技巧性的部分。我们需要把 main函数的参数(argc, argv) 
-    // 提前塞到新进程的用户栈里，这样新进程一开始运行 main(argc, argv) 时就能读到参数。
-    // 内存布局通常是: [高地址] 字符串内容 -> 指针数组 -> [低地址] 栈顶 
-    // --- 和guidebook里设计有不同，指针数组和数据的存放位置做了调整，靠近栈顶存放了指针数组
+    // 这里我们操作的是 user_stack_kva (内核虚地址)，因为现在还没切到用户态
     
     // 4.1 计算所有参数字符串的总长度
     int total_len = 0;
@@ -197,56 +206,57 @@ pid_t do_exec(char *name, int argc, char *argv[])
     }
 
     // 4.2 在栈顶预留字符串空间，并做 8 字节对齐
-    // string_base 是存放具体字符数据的起始位置
-    ptr_t string_base = user_stack - total_len;
-    string_base &= ~0x7; // 向下 8 字节对齐，保证内存访问效率
+    ptr_t string_base = user_stack_kva - total_len;
+    string_base &= ~0x7; // 向下 8 字节对齐
 
-    // 4.3 拷贝字符串内容到栈上
-    // 我们需要把内核里的 argv 字符串一个个搬运到用户栈的新位置
+    // 4.3 拷贝字符串内容到栈上 (写物理内存)
     char *argv_new_addr[argc]; 
     char *current_str_pos = (char *)string_base;
     
     for (int i = 0; i < argc; ++i) {
         strcpy(current_str_pos, argv[i]);
-        argv_new_addr[i] = current_str_pos; // 记录下这个参数在用户栈里的新地址
+        // 记录下这个参数在用户栈里的新地址
+        // 注意：这里需要计算出对应的【用户虚拟地址】！
+        // 偏移量 = user_stack_kva - current_str_pos
+        // 用户虚地址 = USER_STACK_ADDR - 偏移量
+        // 但这里 current_str_pos 本身就在 user_stack_kva 下方
+        // Offset = new_pcb->user_stack_base + PAGE_SIZE - (ptr_t)current_str_pos
+        // User VA = USER_STACK_ADDR - Offset
+        uintptr_t offset = (new_pcb->user_stack_base + PAGE_SIZE) - (ptr_t)current_str_pos;
+        argv_new_addr[i] = (char *)(USER_STACK_ADDR - offset);
+        
         current_str_pos += strlen(argv[i]) + 1;
     }
 
     // 4.4 在字符串下方预留指针数组的空间
-    // 这里的数组存放的是 char* 指针。
-    // 数组大小: argc 个指针 + 1 个 NULL 结尾符 (C语言标准要求 argv 必须以 NULL 结尾)
     ptr_t argv_ptr_base = string_base - sizeof(char *) * (argc + 1);
     
     // 4.5 做一次 128 字节对齐 
-    // RISC-V的ABI[2] 要求栈指针的地址是128 bit 对齐的
     argv_ptr_base &= ~0x7F; 
 
-    // 4.6 将指针数组拷贝到栈上
-    // 现在 argv_ptr_base 就是最终的 argv 数组在用户栈上的地址
+    // 4.6 将指针数组拷贝到栈上 (写物理内存)
     char **argv_on_stack = (char **)argv_ptr_base;
     for (int i = 0; i < argc; ++i) {
-        argv_on_stack[i] = argv_new_addr[i]; // 填入刚才记录的新地址
+        argv_on_stack[i] = argv_new_addr[i]; // 填入计算好的用户虚拟地址
     }
-    argv_on_stack[argc] = NULL; // 标准要求 argv 数组最后以 NULL 结尾
+    argv_on_stack[argc] = NULL; 
 
-    // 4.7 最终的用户栈顶
-    // 现在栈顶指针 SP 应该指向这个指针数组的开始位置
-    ptr_t final_user_sp = argv_ptr_base;
+    // 4.7 最终的用户栈顶 (用户虚拟地址)
+    // Offset = new_pcb->user_stack_base + PAGE_SIZE - argv_ptr_base
+    // Final User SP = USER_STACK_ADDR - Offset
+    uintptr_t sp_offset = (new_pcb->user_stack_base + PAGE_SIZE) - argv_ptr_base;
+    ptr_t final_user_sp = USER_STACK_ADDR - sp_offset;
 
     // 5. 初始化 PCB 基本字段
-    new_pcb->pid = process_id++; // 分配唯一的 PID
-    new_pcb->parent_pid = current_running->pid; // 记录谁创建了我（父进程）
-    new_pcb->status = TASK_READY; // 状态设为就绪，等待被调度
+    new_pcb->pid = process_id++; 
+    new_pcb->parent_pid = current_running->pid; 
+    new_pcb->status = TASK_READY; 
     new_pcb->cursor_x = 0;
     new_pcb->cursor_y = 0;
-    list_init(&new_pcb->wait_list); // 初始化等待队列，以后等待我的进程会挂在这里
+    list_init(&new_pcb->wait_list); 
 
     // 6. 调用init_pcb_stack初始化寄存器上下文
-    // init_pcb_stack 负责伪造一个现场(TrapFrame)，让 CPU 以为这个进程是被中断打断的。
-    // 当调度器执行 switch_to 恢复现场时，CPU 就会：
-    // - 跳转到 entry_point (程序的 main 函数)
-    // - 栈指针 SP 变成 final_user_sp
-    // - 寄存器 a0 = argc, a1 = argv (即 final_user_sp)
+    // 注意传递 final_user_sp 作为 SP，(char**)final_user_sp 作为 argv
     init_pcb_stack(kernel_stack, final_user_sp, entry_point, new_pcb, argc, (char **)final_user_sp);
 
     // 7. 加入就绪队列
@@ -257,17 +267,24 @@ pid_t do_exec(char *name, int argc, char *argv[])
 
 // Helper to free resources of a PCB
 // 当进程彻底销毁时调用。但在简单的实验内核中，通常只重置状态和 PID，
-// 不一定真正回收物理内存页。 ------ 但是在简单内存管理时，我们现在的mm.c里面只有alloc，并没有free内存（这里先暂时注释掉free）
+// 不一定真正回收物理内存页。
 static void free_pcb_resources(pcb_t *p) {
+    /* 
+     * [P4-Task1] 内存回收 
+     * 如果实现了 freePage 和 free_all_pages，应该在这里调用
+     */
+    if (p->pgdir != 0) {
+        // free_all_pages(p); // 释放该进程所有映射的物理页
+    }
+    
     if (p->kernel_stack_base != 0) {
-        // Assuming you have a way to free pages
-        //freeKernelPage(p->kernel_stack_base);
+        freePage(p->kernel_stack_base);
     }
     if (p->user_stack_base != 0) {
-        //freeUserPage(p->user_stack_base);
+        freePage(p->user_stack_base);
     }
     p->status = TASK_EXITED;
-    p->pid = -1; // 标记为未使用，供 find_free_pcb 再次分配
+    p->pid = -1; 
 }
 
 // [P3-TASK1] Process exits

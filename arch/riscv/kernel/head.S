@@ -6,9 +6,8 @@
 #include <asm.h>
 #include <csr.h>
 
-#define KERNEL_STACK		0x50500000
 #define PAGE_SIZE 4096 // 4K
-#define INIT_KERNEL_STACK 0x50500000
+#define INIT_KERNEL_STACK 0xffffffc050500000
 .globl _edata
 .globl _end
 

@@ -7,7 +7,7 @@
 .equ task_info_loc, 0x502001f8     
 
 // kernel address (move kernel to here, and jmp here to start kernel)
-.equ kernel, 0x50201000
+.equ kernel, 0x50202000 // Prj4之前为0x50201000，之后为0x50202000
 
 // BIOS function entry (jump here to use BIOS APIs)
 .equ bios_func_entry, 0x50150000
@@ -63,8 +63,8 @@ secondary:
     csrw sie, zero
     csrw sip, zero
 
-    // 2. 设置 stvec 指向内核入口 (kernel = 0x50201000)
-    // 这样当收到 IPI 时，硬件会直接跳转到 head.S 的 _start
+    // 2. 设置 stvec 指向内核入口 (kernel = 0x50202000)
+    // 这样当收到 IPI 时，硬件会直接跳转到 start.S 的 _start
     li t0, kernel
     csrw stvec, t0
 

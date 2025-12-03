@@ -28,6 +28,7 @@
 
 #include <type.h>
 #include <pgtable.h>
+#include <os/list.h>
 
 #define MAP_KERNEL 1
 #define MAP_USER 2
@@ -37,6 +38,9 @@
 #define INIT_USER_STACK   0xffffffc052500000
 #define FREEMEM_KERNEL (INIT_KERNEL_STACK+ 2*PAGE_SIZE)
 #define FREEMEM_USER INIT_USER_STACK
+
+#define USER_PAGE_MAX_NUM 1024  // 最大管理的换页元数据数量
+#define KERN_PAGE_MAX_NUM 512   // 触发换出的物理页阈值
 
 /* Rounding; only works for n = power of two */
 #define ROUND(a, n)     (((((uint64_t)(a))+(n)-1)) & ~((n)-1))
@@ -61,11 +65,25 @@ extern ptr_t allocLargePage(int numPage);
 extern void* kmalloc(size_t size);
 extern void share_pgtable(uintptr_t dest_pgdir, uintptr_t src_pgdir);
 extern uintptr_t alloc_page_helper(uintptr_t va, uintptr_t pgdir);
+void init_memory_manager();
+void init_uva_alloc();
 
 // TODO [P4-task4]: shm_page_get/dt */
 uintptr_t shm_page_get(int key);
 void shm_page_dt(uintptr_t addr);
 
 
+// [P4-Task3] 换页机制相关数据结构和函数声明
+// 标准页表无法查出某一个PA对应哪一个进程和虚拟地址，所以需要一个额外的数据结构
+typedef struct {
+    list_node_t lnode;    // 链表节点
+    uintptr_t uva;        // 用户虚拟地址
+    uintptr_t pa;         // 物理地址
+    uint32_t on_disk_sec; // 在磁盘 swap 区的扇区号
+    int pgdir_id;         // 所属页表ID/进程ID
+} alloc_info_t;
+
+extern alloc_info_t alloc_info[USER_PAGE_MAX_NUM];
+extern uint64_t image_end_sec; // Swap 区起始扇区
 
 #endif /* MM_H */

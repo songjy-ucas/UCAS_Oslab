@@ -12,7 +12,7 @@ Disassembly of section .text:
     5020000e:	48a5                	li	a7,9
     50200010:	501502b7          	lui	t0,0x50150
     50200014:	9282                	jalr	t0
-    50200016:	50201537          	lui	a0,0x50201
+    50200016:	50202537          	lui	a0,0x50202
     5020001a:	502002b7          	lui	t0,0x50200
     5020001e:	1fc2829b          	addiw	t0,t0,508 # 502001fc <os_size_loc>
     50200022:	00029583          	lh	a1,0(t0)
@@ -26,13 +26,13 @@ Disassembly of section .text:
     5020003c:	502002b7          	lui	t0,0x50200
     50200040:	1f82829b          	addiw	t0,t0,504 # 502001f8 <task_info_loc>
     50200044:	00029583          	lh	a1,0(t0)
-    50200048:	502012b7          	lui	t0,0x50201
+    50200048:	502022b7          	lui	t0,0x50202
     5020004c:	8282                	jr	t0
 
 000000005020004e <secondary>:
     5020004e:	10401073          	csrw	sie,zero
     50200052:	14401073          	csrw	sip,zero
-    50200056:	502012b7          	lui	t0,0x50201
+    50200056:	502022b7          	lui	t0,0x50202
     5020005a:	10529073          	csrw	stvec,t0
     5020005e:	4289                	li	t0,2
     50200060:	1042a073          	csrs	sie,t0

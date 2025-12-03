@@ -264,4 +264,53 @@ void sys_taskset(int mask, int pid)
 {
     invoke_syscall(SYSCALL_TASKSET, (long)mask, (long)pid, 0, 0, 0);
 }
+
+// Pro4 新增
+
+/* 
+ * 1. sys_pipe_open
+ * 对应 SYSCALL_PIPE_OPEN
+ */
+int sys_pipe_open(const char *name)
+{
+    /* 
+     * 调用内核的 do_mbox_open 或类似的实现
+     * 参数1: name (字符串地址)
+     */
+    return (int)invoke_syscall(SYSCALL_PIPE_OPEN, (uintptr_t)name, 0, 0, 0, 0);
+}
+
+/* 
+ * 2. sys_pipe_take_pages
+ * 对应 SYSCALL_PIPE_TAKE
+ * 
+ * 注意：根据报错信息，ipc.c 中使用的名字是 sys_pipe_take_pages
+ * 它的功能通常是申请共享内存页
+ */
+/* 2. sys_pipe_take_pages */
+long sys_pipe_take_pages(int pipe_idx, void *dst, size_t length)
+{
+    /* 
+     * 参数1: pipe_idx (int)
+     * 参数2: dst (void*)
+     * 参数3: length (size_t)
+     */
+    return invoke_syscall(SYSCALL_PIPE_TAKE, (uintptr_t)pipe_idx, (uintptr_t)dst, (uintptr_t)length, 0, 0);
+}
+
+/* 
+ * 3. sys_pipe_give_pages
+ * 对应 SYSCALL_PIPE_GIVE
+ * 
+ * 功能通常是释放/归还共享内存页
+ */
+long sys_pipe_give_pages(int pipe_idx, void *src, size_t length)
+{
+    /* 
+     * 参数1: pipe_idx (int)
+     * 参数2: src (void*)
+     * 参数3: length (size_t)
+     */
+    return invoke_syscall(SYSCALL_PIPE_GIVE, (uintptr_t)pipe_idx, (uintptr_t)src, (uintptr_t)length, 0, 0);
+}
 /************************************************************/

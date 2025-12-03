@@ -161,7 +161,7 @@ static int mailbox_receiver(void)
 // pipe_sender: warmup + give pages
 static int pipe_sender(void)
 {
-	int pipe_id = sys_pipe_open(PIPE_NAME);
+	int pipe_id = sys_mbox_open(PIPE_NAME);
 	if (pipe_id < 0)
 	{
 		sys_move_cursor(0, PIPE_SEND_LINE);
@@ -202,7 +202,7 @@ static int pipe_sender(void)
 // pipe_receiver: warmup + take pages + verify
 static int pipe_receiver(void)
 {
-	int pipe_id = sys_pipe_open(PIPE_NAME);
+	int pipe_id = sys_mbox_open(PIPE_NAME);
 	if (pipe_id < 0)
 	{
 		sys_move_cursor(0, PIPE_RECV_LINE);

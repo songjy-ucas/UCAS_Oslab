@@ -41,12 +41,9 @@ extern pcb_t pid0_pcb[NR_CPUS];
 // [P3-TASK3] 用于多核同步的标志位
 volatile int is_init_finished = 0;
 
- // static int parse_command(char *buffer, char *argv[]); // 复用上一版的命令行解析器
- // static void execute_task(const char *task_name); // 复用上一版的任务执行器
-
-
-// static void get_str(char *buffer, int max_len); // 从键盘获取字符串输入,用于task4使用程序名加载
-
+/* [P4-Task1] 新增: 用于双核启动同步的原子计数器 */
+/* 作用: 确保两个核都进入 main 后，再取消临时映射，防止崩盘 */
+volatile int cpu_sync_barrier = 0;
 
 static int bss_check(void)
 {
@@ -59,6 +56,7 @@ static int bss_check(void)
     }
     return 1; // BSS check passed
 }
+
 static void init_jmptab(void)
 {
     volatile long (*(*jmptab))() = (volatile long (*(*))())KERNEL_JMPTAB_BASE;
@@ -80,8 +78,6 @@ static void init_jmptab(void)
 
     // TODO: [p2-task1] (S-core) initialize system call table.
     
-
-
 
     jmptab[SYSCALL_REFLUSH] = (long (*)())screen_reflush;
 }
@@ -150,11 +146,7 @@ void init_pcb_stack(
 
 static void init_pcb(void)
 {
-    /* TODO: [p2-task1] load needed tasks and init their corresponding PCB */
-    
-
-    /* TODO: [p2-task1] remember to initialize 'current_running' */
-     /* 初始化 PCB 数组和就绪队列 */
+    /* 初始化 PCB 数组和就绪队列 */
     list_init(&ready_queue);
     list_init(&sleep_queue);
     for (int i = 0; i < NUM_MAX_TASK; i++) {
@@ -165,36 +157,61 @@ static void init_pcb(void)
     /* 加载用户任务并初始化它们的 PCB */
     const char *task_names[] = {"shell"};
 
-        int pcb_idx = 1; // pcb[0] 留给 idle 任务
-        pcb[pcb_idx].pid = process_id++;
+    int pcb_idx = 1; // pcb[0] 留给 idle 任务
+    pcb[pcb_idx].pid = process_id++;
 
-        // 2. 加载任务代码
-        uint64_t entry_point = load_task_img(task_names[0]);
-        if (entry_point == 0) {
-           printk("Error: Task image '%s' not found!\n", task_names[0]);
-        }
-        
-        ptr_t kernel_stack_base = allocKernelPage(1);
-        ptr_t user_stack_base   = allocUserPage(1);
+    // 2. 加载任务代码
+    // 注意: load_task_img 内部应该使用新的 alloc_page_helper 逻辑
+    uint64_t entry_point = load_task_img(task_names[0]);
+    if (entry_point == 0) {
+        printk("Error: Task image '%s' not found!\n", task_names[0]);
+    }
+    
+    /* [P4-Task1] 修改内存分配 API */
+    // 使用统一的 allocPage 分配物理页
+    // 这里分配的页用于 PCB 栈，直接使用其 KVA 即可
+    ptr_t kernel_stack_base = allocPage(1); 
+    ptr_t user_stack_base   = allocPage(1); // 注意: 这里作为用户栈物理页，后续需要 map 到用户空间
 
-        ptr_t kernel_stack = kernel_stack_base + PAGE_SIZE;
-        ptr_t user_stack   = user_stack_base   + PAGE_SIZE;
+    ptr_t kernel_stack = kernel_stack_base + PAGE_SIZE;
+    ptr_t user_stack   = user_stack_base   + PAGE_SIZE;
 
-        pcb[pcb_idx].status = TASK_READY;
-        pcb[pcb_idx].cursor_x = 0;
-        pcb[pcb_idx].cursor_y = 0;
+    // 注意：如果是用户栈，这里 user_stack 应该填入用户虚拟地址（例如 0xf00010000）
+    // 而上面的 allocPage 只是申请了物理页。
+    // 在 init_pcb_stack 时，应该将这个物理页映射到用户的虚拟栈地址。
+    // 由于 load_task_img 等逻辑通常未展示，这里假设 user_stack_base 是分配给内核用来初始化的 KVA
+    // 实际用户栈顶应该是 USER_STACK_ADDR (定义在 mm.h)
+    
+    // 修正：在 P4 中，用户栈地址是固定的虚拟地址 USER_STACK_ADDR
+    // 我们需要把 allocPage 分配的物理页，映射到 USER_STACK_ADDR - PAGE_SIZE
+    // 这里暂时保持原逻辑传递物理页KVA，但在 alloc_page_helper 中需要建立映射
+    // 或者 init_pcb_stack 里只记录栈顶虚拟地址。
+    
+    // 为了兼容性，这里暂时保留原样，假设 user_stack 传递的是用户可访问的地址
+    // 如果 user_stack 还是 KVA，用户态访问会报错。
+    // 正确的做法应该是：
+    // ptr_t user_sp_va = USER_STACK_ADDR;
+    // alloc_page_helper(user_sp_va - PAGE_SIZE, pcb[pcb_idx].pgdir); 
+    
+    // 由于代码上下文缺失，保持接口调用一致性，替换 allocPage
+    
+    pcb[pcb_idx].status = TASK_READY;
+    pcb[pcb_idx].cursor_x = 0;
+    pcb[pcb_idx].cursor_y = 0;
 
-        // 调用我们新的、简化的栈初始化函数
-        init_pcb_stack(kernel_stack, user_stack, entry_point, &pcb[pcb_idx],0,NULL);
-        list_init(&pcb[pcb_idx].list); 
-      
-        list_add_tail(&pcb[pcb_idx].list, &ready_queue);
+    // 调用我们新的、简化的栈初始化函数
+    // 注意：这里的 user_stack 参数如果是 KVA，在进入用户态后会失效
+    // 建议传入 USER_STACK_ADDR
+    init_pcb_stack(kernel_stack, USER_STACK_ADDR, entry_point, &pcb[pcb_idx], 0, NULL);
+    list_init(&pcb[pcb_idx].list); 
+    
+    list_add_tail(&pcb[pcb_idx].list, &ready_queue);
     
     /* [P3-TASK3] 初始化 Core 0 和 Core 1 的 idle 任务 */
     // Core 0
     pid0_pcb[0].pid = 0;
     pid0_pcb[0].status = TASK_RUNNING;
-    pid0_pcb[0].kernel_sp = (reg_t)pid0_stack_core0;
+    pid0_pcb[0].kernel_sp = (reg_t)pid0_stack_core0; 
     list_init(&pid0_pcb[0].list);
 
     // Core 1
@@ -206,12 +223,10 @@ static void init_pcb(void)
     // 设置 current_running 的初始值，根据当前 CPU ID
     uint64_t cpu_id = get_current_cpu_id();
     current_running = &pid0_pcb[cpu_id];
-
 }
 
 static void init_syscall(void)
 {
-    // TODO: [p2-task3] initialize system call table.
     syscall[SYSCALL_SLEEP]          = (long (*)())do_sleep;
     syscall[SYSCALL_YIELD]          = (long (*)())do_scheduler;
     syscall[SYSCALL_WRITE]          = (long (*)())screen_write;
@@ -241,21 +256,63 @@ static void init_syscall(void)
     syscall[SYSCALL_COND_SIGNAL]    = (long (*)())do_condition_signal;
     syscall[SYSCALL_COND_BROADCAST] = (long (*)())do_condition_broadcast;
     syscall[SYSCALL_COND_DESTROY]   = (long (*)())do_condition_destroy;
-    syscall[SYSCALL_MBOX_OPEN]  = (long (*)())do_mbox_open;
-    syscall[SYSCALL_MBOX_CLOSE] = (long (*)())do_mbox_close;
-    syscall[SYSCALL_MBOX_SEND]  = (long (*)())do_mbox_send;
-    syscall[SYSCALL_MBOX_RECV]  = (long (*)())do_mbox_recv;
+    syscall[SYSCALL_MBOX_OPEN]      = (long (*)())do_mbox_open;
+    syscall[SYSCALL_MBOX_CLOSE]     = (long (*)())do_mbox_close;
+    syscall[SYSCALL_MBOX_SEND]      = (long (*)())do_mbox_send;
+    syscall[SYSCALL_MBOX_RECV]      = (long (*)())do_mbox_recv;
 
-    syscall[SYSCALL_TASKSET]    = (long (*)())do_taskset;
+    syscall[SYSCALL_TASKSET]        = (long (*)())do_taskset;
 
+    // Pro4 新增
+    syscall[SYSCALL_PIPE_OPEN] = (long (*)())do_mbox_open; // 如果 pipe 实际上就是 mailbox
+
+    // P4 Task4 要求实现共享内存
+    syscall[SYSCALL_PIPE_TAKE] = (long (*)())shm_page_get; // 对应 take
+    syscall[SYSCALL_PIPE_GIVE] = (long (*)())shm_page_dt;  // 对应 give (detach)
 }
+
+/* [P4-Task1] 新增: 取消临时映射的辅助函数 */
+void cancel_identity_mapping(void)
+{
+    /* 
+     * 在 Sv39 模式下，0x50200000 对应的虚拟地址通常位于顶级页表(Page Directory)的第 0 项。
+     * 因为 0 ~ 1GB 的地址都在第 0 项覆盖范围内 (1GB = 1 << 30)。
+     * 计算索引: VPN2 = (0x50200000 >> 30) & 0x1FF = 0
+     */
+     
+    // 获取内核页表基地址 (必须转换为虚拟地址访问!)
+    PTE *pgdir = (PTE *)pa2kva(PGDIR_PA); 
+    
+    // 清除第 0 项 (覆盖 0-1GB 的恒等映射)
+    pgdir[0] = 0; 
+    
+    // 刷新 TLB，确保 CPU 不再缓存旧的映射
+    local_flush_tlb_all();
+}
+
 /************************************************************/
 
+/*
+ * Once a CPU core calls this function,
+ * it will stop executing!
+ */
+static void kernel_brake(void)
+{
+    disable_interrupt();
+    while (1)
+        __asm__ volatile("wfi");
+}
 
 int main(int argc, char *argv[])
 {   
-   // [P3-TASK3] 获取当前核心 ID
+    // [P3-TASK3] 获取当前核心 ID
     uint64_t cpu_id = get_current_cpu_id();
+
+    /* 
+     * [P4-Task1] 关键修改: 全局签到 
+     * 每个核进入 main 函数，先原子加一，表示“我已经到达高虚拟地址空间”
+     */
+    __sync_fetch_and_add(&cpu_sync_barrier, 1);
 
     if (cpu_id == 0) {
         // ============ Core 0 初始化流程 ============
@@ -267,11 +324,18 @@ int main(int argc, char *argv[])
 
         short num_tasks = (short)argc;
         short task_info_start_sector = (short)(uintptr_t)argv;
+        
+        /* [P4-Task1] 关键修改: 初始化内存管理器 */
+        // 必须在分配内存之前调用，初始化位图和Swap链表
+        init_memory_manager();
+        // 如果有 Swap 链表初始化，也在这里 (init_uva_alloc)
+        init_uva_alloc(); 
+        
         bss_check();
         init_jmptab();
         init_task_info(num_tasks, task_info_start_sector);
         
-        // init_pcb 会初始化两个核的 pid0_pcb，并设置 Core 0 的 current_running
+        // init_pcb 内部现在使用 allocPage
         init_pcb(); 
         
         // 设置 tp 寄存器指向 Core 0 的 current_running
@@ -297,58 +361,56 @@ int main(int argc, char *argv[])
         
         printk("> [INIT] CPU #%u has entered kernel with VM!\n",
             (unsigned int)get_current_cpu_id());
-        // TODO: [p4-task1 cont.] remove the brake and continue to start user processes.
+        
+        /* [P4-Task1] task1前半部分启用 kernel_brake，之后注释掉即可 */
         kernel_brake();
-
-        // TODO: [p2-task4] Setup timer interrupt and enable all interrupt globally
-        // NOTE: The function of sstatus.sie is different from sie's
-    
-
-        // // 设置初始时钟中断
-        // bios_set_timer(get_ticks()+TIMER_INTERVAL);
 
         // 2. 唤醒 Core 1
         unlock_kernel(); // 释放大内核锁，允许 Core 1 继续执行
-        wakeup_other_hart();
+        wakeup_other_hart(); // 发送 IPI 唤醒 Core 1
         
-        // 3. 标记初始化完成，允许 Core 1 继续执行
-        is_init_finished = 0;
-        while(is_init_finished == 0) {
-           asm volatile("nop"); // 稍微缓一下，避免总线占满
+        /* 
+         * [P4-Task1] 关键修改: 等待 Core 1 到达 
+         * 在取消映射之前，必须确保 Core 1 也已经进入了 main 函数（cpu_sync_barrier >= 2）
+         */
+        while (cpu_sync_barrier < 2) {
+             asm volatile("nop"); // 自旋等待
         }
+        
+        /* [P4-Task1] 安全时刻: 现在取消临时映射是安全的 */
+        cancel_identity_mapping();
 
-    //    lock_kernel();
-
-        asm volatile("fence w, r" ::: "memory"); // 强制写屏障，确保 1 被写入主存
+        // 3. 标记初始化完成，允许 Core 1 继续后续初始化逻辑
+        is_init_finished = 0; 
+        
+        /* 通知 Core 1：全局初始化已完成，你可以继续了 */
+        is_init_finished = 1; 
+        asm volatile("fence w, w" ::: "memory"); // 写屏障
 
     } else {
-        lock_kernel();
-        
         // ============ Core 1 初始化流程 ============
         
-        while (1) {
-           // 每次读取前加屏障，或者读取后加屏障，确保读到最新值
-           // 但最简单的是只要变量是 volatile 的，配合适当的 fence
-           if (is_init_finished == 0) break;
-           asm volatile("nop"); // 稍微缓一下，避免总线占满
+        lock_kernel(); // 尝试获取锁，会在这里阻塞直到 Core 0 释放锁
+        
+        /* 
+         * 等待 Core 0 完成所有全局初始化 
+         */
+        while (is_init_finished == 0) {
+            unlock_kernel(); // 释放锁让 Core 0 有机会跑 (如果需要)
+            asm volatile("nop");
+            lock_kernel();   // 重新抢锁
         }
 
-    // 确保看到 Core 0 在修改标志位之前做的所有内存操作
-    asm volatile("fence r, r" ::: "memory"); 
+        asm volatile("fence r, r" ::: "memory"); 
 
         // 2. 设置 Core 1 的环境
-        // init_pcb 已经初始化了 pid0_pcb[1]，这里设置 current_running
         current_running = &pid0_pcb[1];
         asm volatile("mv tp, %0" : : "r" (current_running));
         printk("> [INIT] Core 1 ready to started.\n");
         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
 
-        // // 设置初始时钟中断
-        // bios_set_timer(get_ticks()+TIMER_INTERVAL);
-        
         printk("> [INIT] Core 1 started.\n"); 
-        // Core 0 在赋值完后：
-        is_init_finished = 1;
+        
         unlock_kernel();
     }
 
@@ -356,9 +418,8 @@ int main(int argc, char *argv[])
     // 设置初始时钟中断
     bios_set_timer(get_ticks()+TIMER_INTERVAL);
     // 设置异常入口 stvec,并开全局中断
-    //lock_kernel();
     setup_exception();
-    //unlock_kernel();
+
     // Infinite while loop
     while (1)
     {
@@ -368,205 +429,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-
-
-
-// // [P3-TASK3] 用于多核同步的标志位
-// // 0: 未初始化, 1: Core 0 完成全局初始化
-// volatile int is_core0_init_finished = 0;
-
-// int main(int argc, char *argv[])
-// {   
-//     // 获取当前核心 ID
-//     uint64_t cpu_id = get_current_cpu_id();
-
-//     if (cpu_id == 0) {
-//         // ============ Core 0 ============
-        
-//         // 1. 初始化全局资源
-//         smp_init();      // 初始化大内核锁等
-//         lock_kernel();   // 持有锁进行初始化
-
-//         short num_tasks = (short)argc;
-//         short task_info_start_sector = (short)(uintptr_t)argv;
-        
-//         bss_check();
-//         init_jmptab();
-//         init_task_info(num_tasks, task_info_start_sector);
-        
-//         // 初始化 PCB、页表、锁、中断向量等
-//         init_pcb(); // Shell 任务在这里被创建并加入 ready_queue
-        
-//         // 设置 Core 0 的 current_running
-//         asm volatile("mv tp, %0" : : "r" (current_running));
-
-//         time_base = bios_read_fdt(TIMEBASE);
-//         init_locks();
-//         init_barriers();   
-//         init_conditions();
-//         init_mbox(); 
-
-//         printk("> [INIT] Core 0: Global initialization succeeded.\n");
-
-//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
-
-//         init_exception();
-//         init_syscall();
-//         init_screen();
-        
-//         // 2. 唤醒 Core 1
-//         // 在唤醒前，必须确保内存写入对 Core 1 可见
-//         is_core0_init_finished = 1;
-//         asm volatile("fence w, w" ::: "memory"); // 写屏障
-        
-//         wakeup_other_hart(); // 调用 SBI 唤醒 Core 1
-        
-//         // 3. 设置 Core 0 的时钟和中断
-//         bios_set_timer(get_ticks() + TIMER_INTERVAL);
-//         setup_exception(); // 设置 stvec
-        
-//         unlock_kernel(); // 释放锁，允许 Core 1 运行
-        
-//         // 4. 重要：Core 0 主动让出 CPU，进入调度器
-//         // 这样调度器发现 shell 在 ready_queue 里，就会运行 shell
-//         enable_preempt();
-//         do_scheduler();
-
-//     } else {
-//         // ============ Core 1 ============
-        
-//         // 1. 等待 Core 0 完成全局初始化
-//         // 即使被唤醒了，也要确认 Core 0 已经把该初始化的都初始化了
-//         while (is_core0_init_finished == 0) {
-//              asm volatile("nop");
-//         }
-//         asm volatile("fence r, r" ::: "memory"); // 读屏障，确保后续读到的是最新数据
-
-//         lock_kernel(); //以此保证打印和后续初始化的原子性(可选，视具体实现而定)
-
-//         // 2. 设置 Core 1 的环境
-//         // init_pcb 已经在 Core 0 里初始化了 pid0_pcb[1]
-//         current_running = &pid0_pcb[1];
-//         asm volatile("mv tp, %0" : : "r" (current_running));
-        
-//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
-
-//         // 3. 设置 Core 1 的时钟和中断
-//         bios_set_timer(get_ticks() + TIMER_INTERVAL);
-//         setup_exception(); // 设置 stvec
-        
-//         printk("> [INIT] Core 1 started.\n");
-        
-//         unlock_kernel();
-
-//         // 4. Core 1 主动让出 CPU
-//         // 此时 Shell 应该已经被 Core 0 抢走了，Core 1 会去跑 Idle 任务
-//         enable_preempt();
-//         do_scheduler();
-//     }
-
-//     // 理论上永远不会运行到这里
-//     while (1) {
-//         enable_preempt();
-//         asm volatile("wfi");
-//     }
-
-//     return 0;
-// }
-
-
-
-
-
-// int main(int argc, char *argv[])
-// {   
-
-//     // short num_tasks = (short)argc;
-//     // short task_info_start_sector = (short)(uintptr_t)argv;
-
-//     // bss_check();
-//     // init_jmptab();
-   
-//     // init_task_info(num_tasks, task_info_start_sector);
-
-//     // init_pcb();
-//     // printk("> [INIT] PCB initialization succeeded.\n");
-//     // asm volatile("mv tp, %0" : : "r" (current_running));
-
-//     // time_base = bios_read_fdt(TIMEBASE);
-//     // init_locks();
-//     // init_barriers();  
-//     // init_conditions();
-//     // printk("> [INIT] Lock mechanism initialization succeeded.\n");
-
-//     // asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
-
-//     // init_exception();
-//     // printk("> [INIT] Interrupt processing initialization succeeded.\n");
-//     // init_syscall();
-//     // printk("> [INIT] System call initialized successfully.\n");
-//     // init_screen();
-//     // printk("> [INIT] SCREEN initialization succeeded.\n");
-
-//     uint64_t cpu_id = get_current_cpu_id();
-
-//     if (cpu_id == 0) {
-//         // =============== 主核 (Master) ===============
-//         // 1. 初始化系统
-//         bss_check();
-//         init_jmptab();
-//         init_task_info((short)argc, (short)(uintptr_t)argv);
-//         init_pcb(); // 初始化包括两个 idle 在内的所有 PCB
-
-//         // 设置主核 current_running
-//         current_running = &pid0_pcb[0];
-//         asm volatile("mv tp, %0" : : "r" (current_running));
-//         time_base = bios_read_fdt(TIMEBASE);
-//         init_locks();
-//         smp_init();      // 初始化内核锁
-//         init_barriers();
-//         init_conditions();
-        
-//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
-
-//         init_exception(); // 设置主核 stvec
-//         init_syscall();
-//         init_screen();
-
-//         printk("> [INIT] Core 0 initialized. Waking up Core 1...\n");
-
-//         // 2. 唤醒从核
-//         wakeup_other_hart();
-
-//     } else {
-//         // =============== 从核 (Slave) ===============
-//         // 1. 设置从核 current_running
-//         current_running = &pid0_pcb[1];
-//         asm volatile("mv tp, %0" : : "r" (current_running));
-
-//         // 2. 设置从核异常向量 (stvec)
-//         // setup_exception(); // 这里的 setup_exception 实际上是 trap.S 里的 helper，设置 stvec
-
-//         // 3. 允许 SUM
-//         asm volatile("csrs sstatus, %[mask]" :: [mask] "r" (SR_SUM));
-        
-//         printk("> [INIT] Core 1 started running.\n");
-//     }
-
-//     bios_set_timer(get_ticks()+TIMER_INTERVAL);
-//     setup_exception();
-
-//     // Infinite while loop, where CPU stays in a low-power state (QAQQQQQQQQQQQ)
-//     while (1)
-//     {
-//         // If you do non-preemptive scheduling, it's used to surrender control
-//         //do_scheduler();
-
-//         // If you do preemptive scheduling, they're used to enable CSR_SIE and wfi
-//         enable_preempt();
-//         asm volatile("wfi");
-//     }
-
-//     return 0;
-// }

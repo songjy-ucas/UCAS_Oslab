@@ -29,6 +29,7 @@
 #include <type.h>
 #include <pgtable.h>
 #include <os/list.h>
+#include <os/irq.h> 
 
 #define MAP_KERNEL 1
 #define MAP_USER 2
@@ -61,12 +62,15 @@ extern ptr_t allocLargePage(int numPage);
 #define USER_STACK_ADDR 0xf00010000
 #endif
 
-// TODO [P4-task1] */
+// TODO [P4-task1] 
 extern void* kmalloc(size_t size);
 extern void share_pgtable(uintptr_t dest_pgdir, uintptr_t src_pgdir);
 extern uintptr_t alloc_page_helper(uintptr_t va, uintptr_t pgdir);
 void init_memory_manager();
 void init_uva_alloc();
+
+// TODO [P4-task2]
+extern void do_page_fault(regs_context_t *regs);
 
 // TODO [P4-task4]: shm_page_get/dt */
 uintptr_t shm_page_get(int key);

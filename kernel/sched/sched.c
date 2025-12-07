@@ -116,8 +116,8 @@ void do_scheduler(void)
         local_flush_tlb_all();
         
         // debug use
-        printk("Switch: PID %d -> %d, Next PGDIR: 0x%lx\n", 
-        prev->pid, next->pid, next->pgdir);
+        // printk("Switch: PID %d -> %d, Next PGDIR: 0x%lx\n", 
+        // prev->pid, next->pid, next->pgdir);
         
         // [P4] 5. 切换寄存器上下文
         switch_to(prev, next);

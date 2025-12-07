@@ -177,7 +177,7 @@ ptr_t uva_allocPage(int numPage, uintptr_t uva)
             add_node_to_q(&in_info->lnode, &in_mem_list);
             
             // [Fix] 获取当前核 ID 并建立映射
-            uint64_t my_cpu_id = get_current_cpu_id();
+            // uint64_t my_cpu_id = get_current_cpu_id();
             map_page_helper(in_info->uva, in_info->pa, current_running->pgdir);
             local_flush_tlb_all();
             
@@ -249,6 +249,34 @@ int map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir){
         return 1;
     }
     return 0;
+}
+
+// [Task 2 新增] 缺页异常处理核心函数
+void do_page_fault(regs_context_t *regs)
+{
+    // 1. 获取导致异常的虚拟地址 (stval)
+    uint64_t stval = regs->sbadaddr;
+    
+    // 2. 获取当前运行进程的页表
+    uintptr_t pgdir = current_running->pgdir;
+
+    // 3. 简单的合法性检查 (可选)
+    // 确保不是内核空间的 Page Fault (除非你在做 copy_to_user 之类的)
+    if (stval >= 0xffffffc000000000lu) {
+        printk("Kernel Page Fault @ 0x%lx, pc=0x%lx\n", stval, regs->sepc);
+        assert(0);
+    }
+
+    // 4. 调用分配辅助函数
+    // alloc_page_helper 内部逻辑是：
+    // 如果该地址对应的 PTE 为空，则 allocPage 并建立映射。
+    // 如果 PTE 已存在，则只更新权限（这正好处理了按需调页）
+    // 注意：alloc_page_helper 返回的是映射后的内核虚拟地址，这里我们只关心它建立映射的行为
+    uintptr_t kva = alloc_page_helper(stval, pgdir);
+
+    // 5. 必须操作：刷新 TLB
+    // 因为页表项更新了，必须清除 CPU 的旧缓存，否则 CPU 还是认为该地址不可访问
+    local_flush_tlb_all();
 }
 
 // 分配物理页并映射 (alloc_page_helper)

@@ -216,7 +216,7 @@ ptr_t uva_allocPage(int numPage, uintptr_t uva)
     }
 }
 
-// 建立映射辅助函数
+// 建立映射辅助函数 ---- 用户程序页表映射建立
 int map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir){
     va &= VA_MASK;
     uint64_t vpn2 = (va >> 30) & 0x1FF;
@@ -226,14 +226,14 @@ int map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir){
     PTE *pgd = (PTE*)pgdir;
     if (pgd[vpn2] == 0) {
         set_pfn(&pgd[vpn2], kva2pa(allocPage(1)) >> NORMAL_PAGE_SHIFT);
-        set_attribute(&pgd[vpn2], _PAGE_PRESENT | _PAGE_USER);
+        set_attribute(&pgd[vpn2], _PAGE_PRESENT);
         clear_pgdir(pa2kva(get_pa(pgd[vpn2])));
     }
     
     PTE *pmd = (uintptr_t *)pa2kva((get_pa(pgd[vpn2])));
     if(pmd[vpn1] == 0){
         set_pfn(&pmd[vpn1], kva2pa(allocPage(1)) >> NORMAL_PAGE_SHIFT);
-        set_attribute(&pmd[vpn1], _PAGE_PRESENT | _PAGE_USER);
+        set_attribute(&pmd[vpn1], _PAGE_PRESENT); // 非叶子节点 都不要 _PAGE_USER
         clear_pgdir(pa2kva(get_pa(pmd[vpn1])));
     }
     
@@ -264,7 +264,7 @@ uintptr_t alloc_page_helper(uintptr_t va, uintptr_t pgdir)
     if (pgd[vpn2] == 0) {
         // allocPage 返回内核虚地址，kva2pa 转为物理地址，再存入 PTE
         set_pfn(&pgd[vpn2], kva2pa(allocPage(1)) >> NORMAL_PAGE_SHIFT);
-        set_attribute(&pgd[vpn2], _PAGE_PRESENT | _PAGE_USER);
+        set_attribute(&pgd[vpn2], _PAGE_PRESENT);
         // 清空新分配的页表页
         clear_pgdir(pa2kva(get_pa(pgd[vpn2])));
     }
@@ -273,7 +273,7 @@ uintptr_t alloc_page_helper(uintptr_t va, uintptr_t pgdir)
     // 检查并分配一级页表
     if(pmd[vpn1] == 0){
         set_pfn(&pmd[vpn1], kva2pa(allocPage(1)) >> NORMAL_PAGE_SHIFT);
-        set_attribute(&pmd[vpn1], _PAGE_PRESENT | _PAGE_USER);
+        set_attribute(&pmd[vpn1], _PAGE_PRESENT);
         clear_pgdir(pa2kva(get_pa(pmd[vpn1])));
     }
     

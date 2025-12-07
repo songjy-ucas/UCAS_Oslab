@@ -373,7 +373,7 @@ int main(/*int argc, char *argv[]*/)
             (unsigned int)get_current_cpu_id());
        
         /* [P4-Task1] task1前半部分启用 kernel_brake，之后注释掉即可 */
-        kernel_brake();
+        //kernel_brake();
  
         // 2. 唤醒 Core 1
         unlock_kernel(); // 释放大内核锁，允许 Core 1 继续执行

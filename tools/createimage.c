@@ -27,6 +27,7 @@ typedef struct {
     uint32_t offset;
     uint32_t size;
     uint64_t entry_point;
+    uint32_t p_memsz;
 } task_info_t;
 
 #define TASK_MAXNUM 32 // Pro3 task5 要加用户程序，超过了16个
@@ -143,14 +144,20 @@ static void create_image(int nfiles, char *files[])
         taskinfo[i].entry_point = ehdr.e_entry;
         taskinfo[i].offset = task_start_addr;
 
+        // 初始化 p_memsz 为 0，准备累加
+        taskinfo[i].p_memsz = 0;
+
         int app_begin_phyaddr = phyaddr;
         for (int ph = 0; ph < ehdr.e_phnum; ph++) {
             read_phdr(&phdr, fp, ph, ehdr);
             if (phdr.p_type == PT_LOAD) {
+                // [修改点 2] 累加该程序所有 LOAD 段的内存大小
+                // 这包含了 .text, .data 以及 .bss (因为 p_memsz >= p_filesz)
+                taskinfo[i].p_memsz += phdr.p_memsz;
                 write_segment(phdr, fp, img, &phyaddr);
             }
         }
-        taskinfo[i].size = phyaddr - app_begin_phyaddr;
+        taskinfo[i].size = phyaddr - app_begin_phyaddr; // 这个size是p_filesz的大小
         fclose(fp);
     }
     

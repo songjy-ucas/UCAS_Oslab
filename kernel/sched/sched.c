@@ -97,7 +97,31 @@ void do_scheduler(void)
          next->mask);
 
     // 7. 调用汇编实现的 switch_to 函数，完成上下文切换
-    switch_to(prev, next);
+    // 只有当任务确实发生变化时才进行切换
+    if (prev != next) {
+        // [P4] 1. 获取下一个进程的页目录虚拟地址 (Kernel Virtual Address)
+        // 确保你的 PCB 结构体中有 pgdir 成员，并且在创建进程时已初始化
+        uintptr_t next_pgdir_kva = next->pgdir;
+
+        // [P4] 2. 转换为物理地址 (Physical Address)
+        // satp 寄存器需要的是物理页号，所以必须转换
+        uintptr_t next_pgdir_pa = kva2pa(next_pgdir_kva);
+
+        // [P4] 3. 切换 SATP 寄存器
+        // 使用 SV39 模式，ASID 设为 0 (简化)，填入物理页号 (PA >> 12)
+        set_satp(SATP_MODE_SV39, 0, next_pgdir_pa >> NORMAL_PAGE_SHIFT);
+
+        // [P4] 4. 刷新 TLB
+        // 必须操作，否则 CPU 还会用旧的缓存查表，导致崩溃
+        local_flush_tlb_all();
+        
+        // debug use
+        printk("Switch: PID %d -> %d, Next PGDIR: 0x%lx\n", 
+        prev->pid, next->pid, next->pgdir);
+        
+        // [P4] 5. 切换寄存器上下文
+        switch_to(prev, next);
+    }
 }
 
 void do_sleep(uint32_t sleep_time)
@@ -167,7 +191,10 @@ pid_t do_exec(char *name, int argc, char *argv[])
         return -1;
     }
 
-    // 2. [Task 1] 创建新页表并共享内核映射
+    // 2. [Task 1] 创建新页表并共享内核映射 
+
+    //------ 这个就是guidebook里面的“要点解读3”，需要为每个用户进程映射“一个”内核页表。-----
+
     // allocPage 返回内核虚拟地址
     new_pcb->pgdir = allocPage(1); 
     clear_pgdir(new_pcb->pgdir);

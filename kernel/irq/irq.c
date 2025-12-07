@@ -6,6 +6,8 @@
 #include <printk.h>
 #include <assert.h>
 #include <screen.h>
+#include <os/mm.h>
+
 #define SCAUSE_IRQ_MASK 0x8000000000000000
 handler_t irq_table[IRQC_COUNT];
 handler_t exc_table[EXCC_COUNT];
@@ -32,6 +34,13 @@ void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
     do_scheduler();
 }
 
+// [Task 2 新增] 缺页异常处理的包装函数
+void handle_page_fault(regs_context_t *regs, uint64_t stval, uint64_t scause)
+{
+    // 调用 mm.c 中的实际处理函数
+    do_page_fault(regs);
+}
+
 void init_exception()
 {
     /* TODO: [p2-task3] initialize exc_table */
@@ -42,9 +51,17 @@ void init_exception()
 
     /* TODO: [p2-task3] set up the entrypoint of exceptions */
 
+    /* Initialize exc_table */
     for (int i = 0; i < EXCC_COUNT; i++) {
         exc_table[i] = &handle_other;
     }
+
+    // [Task 2 修改] 注册缺页异常处理函数
+    // 12: 取指令缺页, 13: 读缺页, 15: 写缺页
+    exc_table[EXCC_INST_PAGE_FAULT ] = &handle_page_fault;
+    exc_table[EXCC_LOAD_PAGE_FAULT ] = &handle_page_fault;
+    exc_table[EXCC_STORE_PAGE_FAULT] = &handle_page_fault;
+
     exc_table[EXCC_SYSCALL] = &handle_syscall;
     irq_table[IRQC_U_SOFT ] = handle_other;
     irq_table[IRQC_S_SOFT ] = handle_other;

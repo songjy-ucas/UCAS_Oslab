@@ -4,6 +4,7 @@
 #include <os/kernel.h>
 #include <type.h>
 #include <os/mm.h>
+// #include <printk.h>
 
 // NBYTES2SEC宏
 #define NBYTES2SEC(nbytes) (((nbytes) / SECTOR_SIZE) + ((nbytes) % SECTOR_SIZE != 0))
@@ -77,10 +78,96 @@ uint64_t load_task_img(const char *taskname)
  * 返回值：
  *   成功返回用户虚拟地址入口 (USER_ENTRYPOINT)，失败返回 0
  */
+// uint64_t map_task(char *taskname, uintptr_t pgdir)
+// {
+//     int task_idx = -1;
+//     // 查找任务
+//     for (int i = 0; i < TASK_MAXNUM; i++) {
+//         if (tasks[i].name[0] != '\0' && strcmp(tasks[i].name, taskname) == 0) {
+//             task_idx = i;
+//             break;
+//         }
+//     }
+
+//     if (task_idx == -1) {
+//         bios_putstr("Fail to find the task!\n");
+//         return 0;
+//     }
+
+//     task_info_t *info = &tasks[task_idx];
+
+//     // =============================================================
+//     // 1. 读取数据到临时物理缓冲区 (TMP_MEM_BASE)
+//     // =============================================================
+    
+//     // 计算扇区信息
+//     uint32_t start_sector = info->offset / SECTOR_SIZE;
+//     // 考虑到 offset 不对齐的情况，读取长度需要覆盖首尾
+//     uint32_t end_sector = (info->offset + info->size - 1) / SECTOR_SIZE;
+//     uint32_t num_sectors = end_sector - start_sector + 1;
+
+//     // [关键修正] 传物理地址给 BIOS
+//     // 注意：这里我们直接用 TMP_MEM_BASE 这个常量物理地址
+//     bios_sd_read(TMP_MEM_BASE, num_sectors, start_sector);
+
+//     // =============================================================
+//     // 2. 建立页表映射并拷贝数据
+//     // =============================================================
+
+//     uint64_t user_va_start = USER_ENTRYPOINT;
+//     uint64_t user_va_end = USER_ENTRYPOINT + info->size; // 这里用 filesz 即可，BSS 另说
+    
+//     // 2.1 遍历用户虚拟地址空间，按页分配物理内存并建立映射
+//     for (uint64_t va = user_va_start; va < user_va_end; va += PAGE_SIZE) {
+//         // alloc_page_helper 负责在 pgdir 中分配物理页并建立映射
+//         // 它会返回该物理页的内核虚拟地址，但这里我们要的是“先占坑”
+//         alloc_page_helper(va, pgdir);
+//     }
+
+//     // 2.2 拷贝数据 (从临时缓冲区 -> 目标物理页)
+//     // 计算源数据在 TMP_MEM_BASE 中的准确偏移
+//     uint32_t offset_in_sector = info->offset % SECTOR_SIZE;
+    
+//     // [关键修正] 源地址转为内核虚拟地址
+//     // pa2kva(TMP_MEM_BASE) 得到缓冲区的虚拟基址
+//     uintptr_t src_va_base = pa2kva(TMP_MEM_BASE);
+//     uintptr_t src_ptr = src_va_base + offset_in_sector;
+
+//     // 按页拷贝逻辑 (避免 memcpy 跨物理页边界)
+//     uint64_t remain_size = info->size;
+//     uint64_t current_va = user_va_start;
+//     uintptr_t current_src = src_ptr;
+
+//     while (remain_size > 0) {
+//         // 获取当前目标页的内核虚拟地址 (destination)
+//         // alloc_page_helper 再次调用会直接返回已存在的页地址
+//         uintptr_t dest_page_kva = alloc_page_helper(current_va, pgdir);
+        
+//         // 计算本次拷贝长度 (处理页内偏移和剩余长度)
+//         uint64_t page_offset = current_va % PAGE_SIZE;
+//         uint64_t page_remain = PAGE_SIZE - page_offset;
+//         uint64_t copy_len = (remain_size < page_remain) ? remain_size : page_remain;
+
+//         // 执行拷贝
+//         memcpy((void *)(dest_page_kva + page_offset), (void *)current_src, copy_len);
+
+//         // 更新游标
+//         remain_size -= copy_len;
+//         current_va += copy_len;
+//         current_src += copy_len;
+//     }
+
+//     // 2.3 BSS 清零 (如果有 memsz > filesz 信息)
+//     // 你的 task_info_t 暂时没有 memsz，如果后续加上，逻辑类似：
+//     // for (va = filesz_end; va < memsz_end; ...) alloc_page_helper(va) -> memset(0)
+
+//     return USER_ENTRYPOINT;
+// }
+
 uint64_t map_task(char *taskname, uintptr_t pgdir)
 {
     int task_idx = -1;
-    // 查找任务
+    // 1. 查找任务
     for (int i = 0; i < TASK_MAXNUM; i++) {
         if (tasks[i].name[0] != '\0' && strcmp(tasks[i].name, taskname) == 0) {
             task_idx = i;
@@ -89,76 +176,76 @@ uint64_t map_task(char *taskname, uintptr_t pgdir)
     }
 
     if (task_idx == -1) {
-        // bios_putstr("Fail to find the task!\n");
+        bios_putstr("Task not found: '");
+        bios_putstr((char *)taskname);
+        bios_putstr("'\n\r");
         return 0;
     }
 
     task_info_t *info = &tasks[task_idx];
 
     // =============================================================
-    // 1. 读取数据到临时物理缓冲区 (TMP_MEM_BASE)
+    // [修改点 1] 使用 p_memsz 确定内存分配大小
     // =============================================================
-    
-    // 计算扇区信息
-    uint32_t start_sector = info->offset / SECTOR_SIZE;
-    // 考虑到 offset 不对齐的情况，读取长度需要覆盖首尾
-    uint32_t end_sector = (info->offset + info->size - 1) / SECTOR_SIZE;
-    uint32_t num_sectors = end_sector - start_sector + 1;
+    uint64_t mem_size = info->p_memsz;
 
-    // [关键修正] 传物理地址给 BIOS
-    // 注意：这里我们直接用 TMP_MEM_BASE 这个常量物理地址
-    bios_sd_read(TMP_MEM_BASE, num_sectors, start_sector);
+    // 安全防御：理论上 p_memsz >= size，但防止数据异常，做个保底
+    if (mem_size < info->size) {
+        mem_size = info->size;
+    }
+
+    // 计算需要映射的虚拟地址上限（向上对齐到 PAGE_SIZE）
+    // 比如 mem_size = 0x1234, 对齐后 alloc_limit = 0x2000
+    uint64_t alloc_limit = (mem_size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
     // =============================================================
-    // 2. 建立页表映射并拷贝数据
+    // [修改点 2] 建立完整的页表映射 (包含 代码段 + 数据段 + BSS)
     // =============================================================
-
     uint64_t user_va_start = USER_ENTRYPOINT;
-    uint64_t user_va_end = USER_ENTRYPOINT + info->size; // 这里用 filesz 即可，BSS 另说
     
-    // 2.1 遍历用户虚拟地址空间，按页分配物理内存并建立映射
-    for (uint64_t va = user_va_start; va < user_va_end; va += PAGE_SIZE) {
-        // alloc_page_helper 负责在 pgdir 中分配物理页并建立映射
-        // 它会返回该物理页的内核虚拟地址，但这里我们要的是“先占坑”
+    for (uint64_t va = user_va_start; va < user_va_start + alloc_limit; va += PAGE_SIZE) {
+        // 这里分配物理页并建立映射。
+        // 关键点：alloc_page_helper 内部必须保证分配出的物理页是清零的！
+        // 这样，mem_size > size 的部分（BSS段）自动就被填成 0 了。
         alloc_page_helper(va, pgdir);
     }
 
-    // 2.2 拷贝数据 (从临时缓冲区 -> 目标物理页)
-    // 计算源数据在 TMP_MEM_BASE 中的准确偏移
-    uint32_t offset_in_sector = info->offset % SECTOR_SIZE;
+    // =============================================================
+    // 3. 读取数据并拷贝 (这部分基本不用变，但逻辑更清晰了)
+    // =============================================================
+    // 注意：只拷贝磁盘上存在的 info->size 大小，不要拷贝 mem_size！
     
-    // [关键修正] 源地址转为内核虚拟地址
-    // pa2kva(TMP_MEM_BASE) 得到缓冲区的虚拟基址
-    uintptr_t src_va_base = pa2kva(TMP_MEM_BASE);
-    uintptr_t src_ptr = src_va_base + offset_in_sector;
+    uint32_t start_sector = info->offset / SECTOR_SIZE;
+    uint32_t end_sector = (info->offset + info->size - 1) / SECTOR_SIZE;
+    uint32_t num_sectors = end_sector - start_sector + 1;
 
-    // 按页拷贝逻辑 (避免 memcpy 跨物理页边界)
-    uint64_t remain_size = info->size;
+    // 读取 SD 卡数据到内核临时缓冲区
+    bios_sd_read(TMP_MEM_BASE, num_sectors, start_sector);
+
+    uint32_t offset_in_sector = info->offset % SECTOR_SIZE;
+    uintptr_t src_ptr = pa2kva(TMP_MEM_BASE) + offset_in_sector;
+
+    uint64_t remain_size = info->size; // 只处理文件大小
     uint64_t current_va = user_va_start;
-    uintptr_t current_src = src_ptr;
 
     while (remain_size > 0) {
-        // 获取当前目标页的内核虚拟地址 (destination)
-        // alloc_page_helper 再次调用会直接返回已存在的页地址
+        // 获取目标页的内核虚拟地址 (因为上面已经全量分配过了，这里只是为了拿到地址进行 memcpy)
         uintptr_t dest_page_kva = alloc_page_helper(current_va, pgdir);
         
-        // 计算本次拷贝长度 (处理页内偏移和剩余长度)
         uint64_t page_offset = current_va % PAGE_SIZE;
         uint64_t page_remain = PAGE_SIZE - page_offset;
         uint64_t copy_len = (remain_size < page_remain) ? remain_size : page_remain;
 
-        // 执行拷贝
-        memcpy((void *)(dest_page_kva + page_offset), (void *)current_src, copy_len);
+        memcpy((void *)(dest_page_kva + page_offset), (void *)src_ptr, copy_len);
 
-        // 更新游标
         remain_size -= copy_len;
         current_va += copy_len;
-        current_src += copy_len;
+        src_ptr += copy_len;
     }
 
-    // 2.3 BSS 清零 (如果有 memsz > filesz 信息)
-    // 你的 task_info_t 暂时没有 memsz，如果后续加上，逻辑类似：
-    // for (va = filesz_end; va < memsz_end; ...) alloc_page_helper(va) -> memset(0)
+    // 此时：
+    // [USER_ENTRYPOINT, USER_ENTRYPOINT + info->size) -> 填满了代码和数据
+    // [USER_ENTRYPOINT + info->size, USER_ENTRYPOINT + alloc_limit) -> 之前 alloc 时已清零 (BSS)
 
     return USER_ENTRYPOINT;
 }

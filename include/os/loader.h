@@ -4,5 +4,6 @@
 #include <type.h>
 
 uint64_t load_task_img(const char *task_name);
+uint64_t map_task(char *taskname, uintptr_t pgdir); // P4[新增] 
 
 #endif

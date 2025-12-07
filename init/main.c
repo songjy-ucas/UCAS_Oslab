@@ -114,9 +114,7 @@ void init_pcb_stack(
     pt_regs->sepc = entry_point;         // sepc: 用户程序入口地址
     
     // 设置 sstatus:
-    // SR_SPIE: 开启中断 (以便用户程序能响应时钟中断)
-    // ~SR_SPP: 确保 sret 后回到 U-Mode (User Mode)
-    pt_regs->sstatus = (read_csr(sstatus) | SR_SPIE) & ~SR_SPP;
+    pt_regs->sstatus = SR_SPIE | SR_SUM;  // SPIE set to 1
 
     /* 模拟 switch_to 的上下文 */
     switchto_context_t *pt_switchto =
@@ -154,73 +152,83 @@ static void init_pcb(void)
         pcb[i].pid = -1;
     }
 
-    /* 加载用户任务并初始化它们的 PCB */
+    /* 加载用户任务 (Shell) */
     const char *task_names[] = {"shell"};
+    int pcb_idx = 1; // 这里的 1 是硬编码的，指定 Shell 占用 pcb[1]
 
-    int pcb_idx = 1; // pcb[0] 留给 idle 任务
-    pcb[pcb_idx].pid = process_id++;
+    // =============================================================
+    // [修改 2] 为 Shell 创建页表并共享内核映射
+    // =============================================================
+    pcb[pcb_idx].pgdir = allocPage(1); // 分配页目录表
+    clear_pgdir(pcb[pcb_idx].pgdir);   // 清空
+    share_pgtable(pcb[pcb_idx].pgdir, pa2kva(PGDIR_PA)); // 共享内核映射
 
-    // 2. 加载任务代码
-    // 注意: load_task_img 内部应该使用新的 alloc_page_helper 逻辑
-    uint64_t entry_point = load_task_img(task_names[0]);
+    // =============================================================
+    // [修改 3] 使用 map_task 加载 Shell
+    // =============================================================
+    // 之前写 load_task_img 是错的，这里必须用 map_task
+    uint64_t entry_point = map_task((char *)task_names[0], pcb[pcb_idx].pgdir);
+    
     if (entry_point == 0) {
         printk("Error: Task image '%s' not found!\n", task_names[0]);
+        while(1); // 找不到 Shell 直接死循环停止，方便调试
     }
-    
-    /* [P4-Task1] 修改内存分配 API */
-    // 使用统一的 allocPage 分配物理页
-    // 这里分配的页用于 PCB 栈，直接使用其 KVA 即可
-    ptr_t kernel_stack_base = allocPage(1); 
-    ptr_t user_stack_base   = allocPage(1); // 注意: 这里作为用户栈物理页，后续需要 map 到用户空间
 
-    ptr_t kernel_stack = kernel_stack_base + PAGE_SIZE;
-    ptr_t user_stack   = user_stack_base   + PAGE_SIZE;
+    // =============================================================
+    // [修改 4] 分配栈并建立映射
+    // =============================================================
+    
+    // 分配内核栈 (直接分配物理页，使用其内核虚地址)
+    pcb[pcb_idx].kernel_stack_base = allocPage(1);
+    ptr_t kernel_stack = pcb[pcb_idx].kernel_stack_base + PAGE_SIZE;
 
-    // 注意：如果是用户栈，这里 user_stack 应该填入用户虚拟地址（例如 0xf00010000）
-    // 而上面的 allocPage 只是申请了物理页。
-    // 在 init_pcb_stack 时，应该将这个物理页映射到用户的虚拟栈地址。
-    // 由于 load_task_img 等逻辑通常未展示，这里假设 user_stack_base 是分配给内核用来初始化的 KVA
-    // 实际用户栈顶应该是 USER_STACK_ADDR (定义在 mm.h)
-    
-    // 修正：在 P4 中，用户栈地址是固定的虚拟地址 USER_STACK_ADDR
-    // 我们需要把 allocPage 分配的物理页，映射到 USER_STACK_ADDR - PAGE_SIZE
-    // 这里暂时保持原逻辑传递物理页KVA，但在 alloc_page_helper 中需要建立映射
-    // 或者 init_pcb_stack 里只记录栈顶虚拟地址。
-    
-    // 为了兼容性，这里暂时保留原样，假设 user_stack 传递的是用户可访问的地址
-    // 如果 user_stack 还是 KVA，用户态访问会报错。
-    // 正确的做法应该是：
-    // ptr_t user_sp_va = USER_STACK_ADDR;
-    // alloc_page_helper(user_sp_va - PAGE_SIZE, pcb[pcb_idx].pgdir); 
-    
-    // 由于代码上下文缺失，保持接口调用一致性，替换 allocPage
-    
+    // 分配用户栈 (分配物理页，并映射到用户空间)
+    // A-core USER_STACK_ADDR = 0xf00010000
+    // alloc_page_helper 会在 pcb[1].pgdir 里建立映射
+    uintptr_t user_stack_physical_kva = alloc_page_helper(USER_STACK_ADDR - PAGE_SIZE, pcb[pcb_idx].pgdir);
+    pcb[pcb_idx].user_stack_base = user_stack_physical_kva;
+
+    // Shell 的用户栈顶 (固定为用户虚地址)
+    ptr_t final_user_sp = USER_STACK_ADDR;
+
+    // 初始化 PCB 基本信息
+    pcb[pcb_idx].pid = process_id++;
     pcb[pcb_idx].status = TASK_READY;
     pcb[pcb_idx].cursor_x = 0;
     pcb[pcb_idx].cursor_y = 0;
+    pcb[pcb_idx].mask = 0x3; 
+    list_init(&pcb[pcb_idx].list);
+    list_init(&pcb[pcb_idx].wait_list);
 
-    // 调用我们新的、简化的栈初始化函数
-    // 注意：这里的 user_stack 参数如果是 KVA，在进入用户态后会失效
-    // 建议传入 USER_STACK_ADDR
-    init_pcb_stack(kernel_stack, USER_STACK_ADDR, entry_point, &pcb[pcb_idx], 0, NULL);
-    list_init(&pcb[pcb_idx].list); 
-    
+    // =============================================================
+    // [修改 5] 初始化 TrapFrame
+    // =============================================================
+    // Shell 启动不需要参数，argc=0, argv=NULL
+    init_pcb_stack(kernel_stack, final_user_sp, entry_point, &pcb[pcb_idx], 0, NULL);
+
+    // 加入就绪队列
     list_add_tail(&pcb[pcb_idx].list, &ready_queue);
+
+    // -------------------------------------------------------------
+    // 初始化 Idle 任务 (Core 0 & Core 1)
+    // -------------------------------------------------------------
     
-    /* [P3-TASK3] 初始化 Core 0 和 Core 1 的 idle 任务 */
-    // Core 0
+    // Core 0 Idle
     pid0_pcb[0].pid = 0;
     pid0_pcb[0].status = TASK_RUNNING;
-    pid0_pcb[0].kernel_sp = (reg_t)pid0_stack_core0; 
+    pid0_pcb[0].kernel_sp = (reg_t)pid0_stack_core0;
+    // Idle 任务运行在内核态，直接使用内核根页表
+    pid0_pcb[0].pgdir = pa2kva(PGDIR_PA); 
     list_init(&pid0_pcb[0].list);
 
-    // Core 1
+    // Core 1 Idle
     pid0_pcb[1].pid = 0;
     pid0_pcb[1].status = TASK_RUNNING;
     pid0_pcb[1].kernel_sp = (reg_t)pid0_stack_core1;
+    pid0_pcb[1].pgdir = pa2kva(PGDIR_PA);
     list_init(&pid0_pcb[1].list);
-    
-    // 设置 current_running 的初始值，根据当前 CPU ID
+
+    // 设置当前运行进程
     uint64_t cpu_id = get_current_cpu_id();
     current_running = &pid0_pcb[cpu_id];
 }
@@ -299,11 +307,12 @@ void cancel_identity_mapping(void)
 static void kernel_brake(void)
 {
     disable_interrupt();
+    printk("> [INIT] task1_1 OK.\n");
     while (1)
         __asm__ volatile("wfi");
 }
 
-int main(int argc, char *argv[])
+int main(/*int argc, char *argv[]*/)
 {   
     // [P3-TASK3] 获取当前核心 ID
     uint64_t cpu_id = get_current_cpu_id();
@@ -322,8 +331,9 @@ int main(int argc, char *argv[])
         
         lock_kernel(); // 上大内核锁，防止 Core 1 提前运行
 
-        short num_tasks = (short)argc;
-        short task_info_start_sector = (short)(uintptr_t)argv;
+        // 强制转换为 short 指针并取值
+        short num_tasks = *(volatile short *)TASK_NUM_ADDR;
+        short task_info_start_sector = *(volatile short *)TASK_INFO_START_ADDR;
         
         /* [P4-Task1] 关键修改: 初始化内存管理器 */
         // 必须在分配内存之前调用，初始化位图和Swap链表
@@ -361,10 +371,10 @@ int main(int argc, char *argv[])
         
         printk("> [INIT] CPU #%u has entered kernel with VM!\n",
             (unsigned int)get_current_cpu_id());
-        
+       
         /* [P4-Task1] task1前半部分启用 kernel_brake，之后注释掉即可 */
         kernel_brake();
-
+ 
         // 2. 唤醒 Core 1
         unlock_kernel(); // 释放大内核锁，允许 Core 1 继续执行
         wakeup_other_hart(); // 发送 IPI 唤醒 Core 1

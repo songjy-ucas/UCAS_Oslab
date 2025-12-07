@@ -40,13 +40,13 @@ main:
 	li   t0, bios_func_entry
 	jalr t0
 
-	// [p1-task4] 加载任务相关参数并传递给内核
-    // 将信息加载到参数寄存器 a0 和 a1
-    li   t0, task_num_loc
-    lh   a0, 0(t0)            // a0 = task_num
+	; // [p1-task4] 加载任务相关参数并传递给内核
+    ; // 将信息加载到参数寄存器 a0 和 a1
+    ; li   t0, task_num_loc
+    ; lh   a0, 0(t0)            // a0 = task_num
 
-    li   t0, task_info_loc
-    lh   a1, 0(t0)            // a1 = task_info_start_sector
+    ; li   t0, task_info_loc
+    ; lh   a1, 0(t0)            // a1 = task_info_start_sector
 
 	// [p1-task2] jump to kernel to start UCAS-OS
 	li t0, kernel             // 加载内核地址到 t0

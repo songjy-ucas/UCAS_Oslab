@@ -120,11 +120,6 @@ void *kmalloc(size_t size)
     return (void *)allocPage(1);
 }
 
-void share_pgtable(uintptr_t dest_pgdir, uintptr_t src_pgdir)
-{
-    memcpy((void *)dest_pgdir, (void *)src_pgdir, PAGE_SIZE);
-}
-
 // 初始化 Swap 元数据链表
 void init_uva_alloc(){
     for(int i=0; i<USER_PAGE_MAX_NUM; i++){
@@ -259,40 +254,52 @@ int map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir){
 // 分配物理页并映射 (alloc_page_helper)
 uintptr_t alloc_page_helper(uintptr_t va, uintptr_t pgdir)
 {
-    // [关键] 在调用 uva_allocPage 前，可以尝试设置 pgdir_id
-    // 如果没有进程 ID 映射机制，暂时使用 0 或 current_running->pid
-    // pgdir_id = current_running[get_current_cpu_id()]->pid;
-    
     va &= VA_MASK;
     uint64_t vpn2 = (va >> 30) & 0x1FF;
     uint64_t vpn1 = (va >> 21) & 0x1FF;
     uint64_t vpn0 = (va >> 12) & 0x1FF;
 
     PTE *pgd = (PTE*)pgdir;
+    // 检查并分配二级页表
     if (pgd[vpn2] == 0) {
+        // allocPage 返回内核虚地址，kva2pa 转为物理地址，再存入 PTE
         set_pfn(&pgd[vpn2], kva2pa(allocPage(1)) >> NORMAL_PAGE_SHIFT);
         set_attribute(&pgd[vpn2], _PAGE_PRESENT | _PAGE_USER);
+        // 清空新分配的页表页
         clear_pgdir(pa2kva(get_pa(pgd[vpn2])));
     }
-    PTE *pmd = (uintptr_t *)pa2kva((get_pa(pgd[vpn2])));
+    
+    PTE *pmd = (PTE *)pa2kva((get_pa(pgd[vpn2])));
+    // 检查并分配一级页表
     if(pmd[vpn1] == 0){
         set_pfn(&pmd[vpn1], kva2pa(allocPage(1)) >> NORMAL_PAGE_SHIFT);
         set_attribute(&pmd[vpn1], _PAGE_PRESENT | _PAGE_USER);
         clear_pgdir(pa2kva(get_pa(pmd[vpn1])));
     }
+    
     PTE *pte = (PTE *)pa2kva(get_pa(pmd[vpn1])); 
     
+    // 检查并分配物理页 (叶子节点)
     if(pte[vpn0] == 0){
-        // 调用带换页的分配
-        uintptr_t aligned_uva = (va >> NORMAL_PAGE_SHIFT) << NORMAL_PAGE_SHIFT;
-        ptr_t pa = kva2pa(uva_allocPage(1, aligned_uva));
+        // [Task 1 修改] 直接分配物理页，暂不使用带 Swap 的逻辑
+        ptr_t pa = kva2pa(allocPage(1)); 
         set_pfn(&pte[vpn0], pa >> NORMAL_PAGE_SHIFT);
     }
     
+    // 设置页表项属性 (User, Valid, RWX, Dirty, Accessed)
     set_attribute(&pte[vpn0], _PAGE_PRESENT | _PAGE_READ | _PAGE_WRITE |
                             _PAGE_EXEC | _PAGE_ACCESSED | _PAGE_DIRTY | _PAGE_USER);
                             
+    // 返回物理页的内核虚拟地址
     return pa2kva(get_pa(pte[vpn0]));
+}
+
+// 简单的页表共享函数：拷贝内核映射到用户页表
+void share_pgtable(uintptr_t dest_pgdir, uintptr_t src_pgdir)
+{
+    // 利用 Sv39 的特性，直接拷贝整个页目录页
+    // 实际上只需要拷贝高地址部分，但全拷贝最简单安全
+    memcpy((void *)dest_pgdir, (void *)src_pgdir, PAGE_SIZE);
 }
 
 // TODO [P4-task4]

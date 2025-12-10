@@ -228,11 +228,11 @@ ENTRY(exception_handler_entry)
   /* 准备参数调用 C 打印函数: 
      void debug_trap_handler(unsigned long scause, unsigned long stval, unsigned long sepc) 
   */
-  csrr a0, scause  // 第1个参数
-  csrr a1, stval   // 第2个参数
-  csrr a2, sepc    // 第3个参数
+  //csrr a0, scause  // 第1个参数
+  //csrr a1, stval   // 第2个参数
+  //csrr a2, sepc    // 第3个参数
   
-  call debug_trap_handler
+  //call debug_trap_handler
   /* ================== 新增代码结束 ================== */
 
   // [P3-TASK3] 进入内核处理前获取大内核锁

@@ -355,6 +355,7 @@ void do_exit(void)
 
 // [P3-TASK1] Kill a process
 // 杀死指定进程 ------- 特别注意：杀死进程需要释放什么东西？ 它占据的锁要释放
+// [P3-TASK1] Kill a process
 int do_kill(pid_t pid)
 {
     if (pid <= 0) {
@@ -369,38 +370,53 @@ int do_kill(pid_t pid)
         }
     }
 
+    // 如果进程不存在或已经是退出状态，直接返回
     if (target_pcb == NULL || target_pcb->status == TASK_EXITED) {
         return 0; 
     }
 
-    check_and_release_locks(target_pcb->pid); // 释放锁函数内部也实现了 唤醒所有等待锁的进程 即 block->wait_list 里面的所有进程
+    // 释放锁
+    check_and_release_locks(target_pcb->pid); 
 
-    // 保存旧状态，用于后续判断是否需要移出队列
+    // ====================================================================
+    // [修复点 1] 释放目标进程的内存资源
+    // 无论是自杀还是他杀，这些物理页都应该被回收
+    // ====================================================================
+    free_process_memory(target_pcb);
+
+    // 保存旧状态
     task_status_t old_status = target_pcb->status;
 
-    // 设置为 EXITED，标记该进程已死亡
+    // 标记为 EXITED
     target_pcb->status = TASK_EXITED;
 
-    // 唤醒所有等待该进程退出的父进程 (Waitpid 机制) 即target_pcb->wait_list里面的进程
+    // 唤醒父进程
     while (!list_empty(&target_pcb->wait_list)) {
         list_node_t *waiter_node = target_pcb->wait_list.next;
-        // 这里需要将等待者从 wait_list 移除，否则下次还会遍历到
         list_del(waiter_node); 
         pcb_t *waiter_pcb = list_entry(waiter_node, pcb_t, list);
         waiter_pcb->status = TASK_READY;
         list_add_tail(&waiter_pcb->list, &ready_queue);
     }
 
-    // 根据目标进程是否是当前进程，决定调度行为
+    // ====================================================================
+    // [修复点 2] 处理调度和页表切换
+    // ====================================================================
     if (target_pcb == current_running) {
-        // 自杀 (Shell kill 自身，或者用户程序调用 kill)
-        // 必须主动让出 CPU，否则代码会继续向下执行导致错误
+        // CASE A: 自杀 (Kill Self)
+        // 既然上面已经 free_process_memory 回收了自己的页表
+        // 这里必须立刻切换回内核页表，否则 CPU 会崩溃
+        set_satp(SATP_MODE_SV39, 0, PGDIR_PA >> NORMAL_PAGE_SHIFT);
+        local_flush_tlb_all();
+
+        // 主动让出 CPU
         do_scheduler();
     } else {
+        // CASE B: 他杀 (Kill Others)
+        // 只需要将其从就绪/阻塞队列中移除
         if (old_status == TASK_READY || old_status == TASK_BLOCKED) {
             list_del(&target_pcb->list);
         }
-
     }
     return 1; // Success
 }

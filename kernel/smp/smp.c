@@ -26,7 +26,7 @@ void wakeup_other_hart()
 void lock_kernel() // 上锁
 {
     /* TODO: P3-TASK3 multicore*/
-    // klog("Process '%d' Attempting to acquire BKL\n", current_running->pid);
+    klog("Process Attempting to acquire BKL\n");
     spin_lock_acquire(&kernel_lock);
     // klog("Process '%d' Acquired the BKL\n", current_running->pid);
 }
@@ -34,7 +34,7 @@ void lock_kernel() // 上锁
 void unlock_kernel() // 解锁
 {
     /* TODO: P3-TASK3 multicore*/
-    // klog("Process '%d' Unlocking the BKL\n", current_running->pid);
+    klog("Process Unlocking the BKL\n");
     spin_lock_release(&kernel_lock);
 }
 

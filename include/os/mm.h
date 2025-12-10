@@ -99,5 +99,6 @@ size_t do_get_free_memory();
 
 // [P4-Task5] 
 uintptr_t get_pte_of_user_addr(uintptr_t va, uintptr_t pgdir, int alloc);
+int check_and_swap_in(uintptr_t va);
 #endif /* MM_H */
 

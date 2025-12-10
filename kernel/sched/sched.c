@@ -7,7 +7,7 @@
 #include <os/string.h> 
 #include <os/smp.h>
 #include <os/debug.h>
-
+#include <pgtable.h> // 必须包含，用于PTE操作
 #include <csr.h>   
 #include <screen.h>
 #include <printk.h>
@@ -690,6 +690,7 @@ void do_condition_destroy(int cond_idx)
 /* =========================================================================
  *                     进程间通信：信箱 (Mailbox)
  * ========================================================================= */
+// Mailbox 是基于内存拷贝的，因此必须确保数据所在的页在物理内存中。
 
 mailbox_t mboxes[MBOX_NUM];
 
@@ -697,22 +698,20 @@ void init_mbox()
 {
     for (int i = 0; i < MBOX_NUM; i++)
     {
-        mboxes[i].open_refs = 0; // 有多少人打开了它
+        mboxes[i].open_refs = 0;
         mboxes[i].name[0] = '\0';
-        mboxes[i].head = 0; // 读指针
-        mboxes[i].tail = 0; // 写指针
-        mboxes[i].count = 0; // 当前缓冲区的字节数
+        mboxes[i].head = 0;
+        mboxes[i].tail = 0;
+        mboxes[i].count = 0;
         
-        spin_lock_init(&mboxes[i].lock); // 用自旋锁保护并发访问
-        list_init(&mboxes[i].send_wait_queue); // 发送等待队列（满时等待）
-        list_init(&mboxes[i].recv_wait_queue); // 接收等待队列（空时等待）
+        spin_lock_init(&mboxes[i].lock);
+        list_init(&mboxes[i].send_wait_queue);
+        list_init(&mboxes[i].recv_wait_queue);
     }
 }
 
-// 建立打开
 int do_mbox_open(char *name)
 {
-    // 查找是否已存在同名信箱
     for (int i = 0; i < MBOX_NUM; i++)
     {
         if (mboxes[i].open_refs > 0 && strcmp(mboxes[i].name, name) == 0)
@@ -720,17 +719,15 @@ int do_mbox_open(char *name)
             spin_lock_acquire(&mboxes[i].lock); 
             mboxes[i].open_refs++;
             spin_lock_release(&mboxes[i].lock);
-            return i; // 返回信箱 ID
+            return i;
         }
     }
 
-    // 如果不存在，找一个空闲槽位创建
     for (int i = 0; i < MBOX_NUM; i++)
     {
         if (mboxes[i].open_refs == 0)
         {
             spin_lock_acquire(&mboxes[i].lock);
-            // 拿锁后再次确认它没被别人抢走
             if (mboxes[i].open_refs == 0) 
             {
                 strcpy(mboxes[i].name, name);
@@ -747,17 +744,14 @@ int do_mbox_open(char *name)
             spin_lock_release(&mboxes[i].lock);
         }
     }
-
     return -1;
 }
 
-// 关闭信箱
 void do_mbox_close(int mbox_idx)
 {
     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return;
     
     mailbox_t *mbox = &mboxes[mbox_idx];
-    
     spin_lock_acquire(&mbox->lock);
     
     if (mbox->open_refs > 0)
@@ -765,55 +759,64 @@ void do_mbox_close(int mbox_idx)
         mbox->open_refs--; 
         if (mbox->open_refs == 0)
         {
-            // 对于最后一个使用者，有义务释放mbox
             mbox->name[0] = '\0';
             mbox->count = 0;
             mbox->head = 0;
             mbox->tail = 0;
         }
     }
-    
     spin_lock_release(&mbox->lock);
 }
 
-// 生产者发送 
+// 生产者发送 (写入信箱)
 int do_mbox_send(int mbox_idx, void * msg, int msg_length)
 {
     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return 0;
     if (msg_length <= 0) return 0;
-    // 如果单条消息超过信箱总容量，返回失败
     if (msg_length > MAX_MBOX_LENGTH) return 0; 
 
     mailbox_t *mbox = &mboxes[mbox_idx];
     char *data = (char *)msg;
 
-    spin_lock_acquire(&mbox->lock); // 上锁
+    // [重要修正] 在拿锁之前或写入之前，必须确保用户缓冲区在内存中
+    // 如果 msg 跨页了，需要检查每一页。这里简单处理，检查首尾。
+    // 如果页面在 Swap 中，这里会触发 bios_sd_read，产生磁盘 IO。
+    if (!check_and_swap_in((uintptr_t)data)) return 0;
+    if (!check_and_swap_in((uintptr_t)data + msg_length - 1)) return 0;
 
-    // 剩余空间不足时，循环等待
-    while ( (MAX_MBOX_LENGTH - mbox->count) < msg_length )
+    spin_lock_acquire(&mbox->lock);
+
+    while ((MAX_MBOX_LENGTH - mbox->count) < msg_length)
     {
         do_block(&current_running->list, &mbox->send_wait_queue);            
-        spin_lock_release(&mbox->lock); // 必须放锁 否则调度出去，其它进程拿不到锁就死锁了
+        spin_lock_release(&mbox->lock);
         do_scheduler(); 
-        spin_lock_acquire(&mbox->lock); // 唤醒后重新抢锁检查条件
+        spin_lock_acquire(&mbox->lock);
         
-        // 唤醒后检查信箱是否被意外关闭
         if (mbox->open_refs == 0) {
             spin_lock_release(&mbox->lock);
             return 0;
         }
+        
+        // 唤醒后，重新检查页面是否还在内存 (可能睡眠期间又被换出了)
+        if (!check_and_swap_in((uintptr_t)data)) {
+             spin_lock_release(&mbox->lock);
+             return 0;
+        }
     }
 
-    // 空间足够一次性写入 则写入
+    // 内存拷贝
     for (int i = 0; i < msg_length; i++)
     {
+        // 严谨写法：每拷贝一个字节前都应该确保该地址可访问
+        // 但为了性能，通常只在跨页边界时检查。
+        // 这里假设 msg_length 很小(64B)，不会跨页，或者上面已经 SwapIn 了。
         mbox->buf[mbox->tail] = data[i];
         mbox->tail = (mbox->tail + 1) % MAX_MBOX_LENGTH;
     }
     
-    mbox->count += msg_length; // 已有字节数增加
+    mbox->count += msg_length;
 
-    // 写入了数据，唤醒所有因为空而等待接收的进程
     while (!list_empty(&mbox->recv_wait_queue))
     {
         do_unblock(mbox->recv_wait_queue.next);
@@ -823,7 +826,7 @@ int do_mbox_send(int mbox_idx, void * msg, int msg_length)
     return msg_length; 
 }
 
-// 消费者接收
+// 消费者接收 (读出信箱)
 int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
 {
     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return 0;
@@ -832,13 +835,16 @@ int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
     mailbox_t *mbox = &mboxes[mbox_idx];
     char *data = (char *)msg;
 
-    spin_lock_acquire(&mbox->lock); // 上锁
+    // [重要修正] 接收缓冲区也必须在内存中，否则 CPU 无法写入
+    if (!check_and_swap_in((uintptr_t)data)) return 0;
+    if (!check_and_swap_in((uintptr_t)data + msg_length - 1)) return 0;
 
-    // 数据少于目标读取，循环等待
+    spin_lock_acquire(&mbox->lock);
+
     while (mbox->count < msg_length)
     {
         do_block(&current_running->list, &mbox->recv_wait_queue);  
-        spin_lock_release(&mbox->lock); // 放锁
+        spin_lock_release(&mbox->lock);
         do_scheduler(); 
         spin_lock_acquire(&mbox->lock);
         
@@ -846,9 +852,15 @@ int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
             spin_lock_release(&mbox->lock);
             return 0;
         }
+        
+        // 重新检查
+        if (!check_and_swap_in((uintptr_t)data)) {
+             spin_lock_release(&mbox->lock);
+             return 0;
+        }
     }
 
-    // 从环形缓冲区读到用户 buffer
+    // 内存拷贝
     for (int i = 0; i < msg_length; i++)
     {
         data[i] = mbox->buf[mbox->head];
@@ -857,7 +869,6 @@ int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
     
     mbox->count -= msg_length;
 
-    // 唤醒所有因为满而等待发送的进程
     while (!list_empty(&mbox->send_wait_queue))
     {
         do_unblock(mbox->send_wait_queue.next);
@@ -866,6 +877,185 @@ int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
     spin_lock_release(&mbox->lock);
     return msg_length;
 }
+
+
+
+// mailbox_t mboxes[MBOX_NUM];
+
+// void init_mbox()
+// {
+//     for (int i = 0; i < MBOX_NUM; i++)
+//     {
+//         mboxes[i].open_refs = 0; // 有多少人打开了它
+//         mboxes[i].name[0] = '\0';
+//         mboxes[i].head = 0; // 读指针
+//         mboxes[i].tail = 0; // 写指针
+//         mboxes[i].count = 0; // 当前缓冲区的字节数
+        
+//         spin_lock_init(&mboxes[i].lock); // 用自旋锁保护并发访问
+//         list_init(&mboxes[i].send_wait_queue); // 发送等待队列（满时等待）
+//         list_init(&mboxes[i].recv_wait_queue); // 接收等待队列（空时等待）
+//     }
+// }
+
+// // 建立打开
+// int do_mbox_open(char *name)
+// {
+//     // 查找是否已存在同名信箱
+//     for (int i = 0; i < MBOX_NUM; i++)
+//     {
+//         if (mboxes[i].open_refs > 0 && strcmp(mboxes[i].name, name) == 0)
+//         {
+//             spin_lock_acquire(&mboxes[i].lock); 
+//             mboxes[i].open_refs++;
+//             spin_lock_release(&mboxes[i].lock);
+//             return i; // 返回信箱 ID
+//         }
+//     }
+
+//     // 如果不存在，找一个空闲槽位创建
+//     for (int i = 0; i < MBOX_NUM; i++)
+//     {
+//         if (mboxes[i].open_refs == 0)
+//         {
+//             spin_lock_acquire(&mboxes[i].lock);
+//             // 拿锁后再次确认它没被别人抢走
+//             if (mboxes[i].open_refs == 0) 
+//             {
+//                 strcpy(mboxes[i].name, name);
+//                 mboxes[i].open_refs = 1;
+//                 mboxes[i].head = 0;
+//                 mboxes[i].tail = 0;
+//                 mboxes[i].count = 0;
+//                 list_init(&mboxes[i].send_wait_queue);
+//                 list_init(&mboxes[i].recv_wait_queue);
+                
+//                 spin_lock_release(&mboxes[i].lock);
+//                 return i;
+//             }
+//             spin_lock_release(&mboxes[i].lock);
+//         }
+//     }
+
+//     return -1;
+// }
+
+// // 关闭信箱
+// void do_mbox_close(int mbox_idx)
+// {
+//     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return;
+    
+//     mailbox_t *mbox = &mboxes[mbox_idx];
+    
+//     spin_lock_acquire(&mbox->lock);
+    
+//     if (mbox->open_refs > 0)
+//     {
+//         mbox->open_refs--; 
+//         if (mbox->open_refs == 0)
+//         {
+//             // 对于最后一个使用者，有义务释放mbox
+//             mbox->name[0] = '\0';
+//             mbox->count = 0;
+//             mbox->head = 0;
+//             mbox->tail = 0;
+//         }
+//     }
+    
+//     spin_lock_release(&mbox->lock);
+// }
+
+// // 生产者发送 
+// int do_mbox_send(int mbox_idx, void * msg, int msg_length)
+// {
+//     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return 0;
+//     if (msg_length <= 0) return 0;
+//     // 如果单条消息超过信箱总容量，返回失败
+//     if (msg_length > MAX_MBOX_LENGTH) return 0; 
+
+//     mailbox_t *mbox = &mboxes[mbox_idx];
+//     char *data = (char *)msg;
+
+//     spin_lock_acquire(&mbox->lock); // 上锁
+
+//     // 剩余空间不足时，循环等待
+//     while ( (MAX_MBOX_LENGTH - mbox->count) < msg_length )
+//     {
+//         do_block(&current_running->list, &mbox->send_wait_queue);            
+//         spin_lock_release(&mbox->lock); // 必须放锁 否则调度出去，其它进程拿不到锁就死锁了
+//         do_scheduler(); 
+//         spin_lock_acquire(&mbox->lock); // 唤醒后重新抢锁检查条件
+        
+//         // 唤醒后检查信箱是否被意外关闭
+//         if (mbox->open_refs == 0) {
+//             spin_lock_release(&mbox->lock);
+//             return 0;
+//         }
+//     }
+
+//     // 空间足够一次性写入 则写入
+//     for (int i = 0; i < msg_length; i++)
+//     {
+//         mbox->buf[mbox->tail] = data[i];
+//         mbox->tail = (mbox->tail + 1) % MAX_MBOX_LENGTH;
+//     }
+    
+//     mbox->count += msg_length; // 已有字节数增加
+
+//     // 写入了数据，唤醒所有因为空而等待接收的进程
+//     while (!list_empty(&mbox->recv_wait_queue))
+//     {
+//         do_unblock(mbox->recv_wait_queue.next);
+//     }
+
+//     spin_lock_release(&mbox->lock);
+//     return msg_length; 
+// }
+
+// // 消费者接收
+// int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
+// {
+//     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return 0;
+//     if (msg_length <= 0) return 0;
+    
+//     mailbox_t *mbox = &mboxes[mbox_idx];
+//     char *data = (char *)msg;
+
+//     spin_lock_acquire(&mbox->lock); // 上锁
+
+//     // 数据少于目标读取，循环等待
+//     while (mbox->count < msg_length)
+//     {
+//         do_block(&current_running->list, &mbox->recv_wait_queue);  
+//         spin_lock_release(&mbox->lock); // 放锁
+//         do_scheduler(); 
+//         spin_lock_acquire(&mbox->lock);
+        
+//         if (mbox->open_refs == 0) {
+//             spin_lock_release(&mbox->lock);
+//             return 0;
+//         }
+//     }
+
+//     // 从环形缓冲区读到用户 buffer
+//     for (int i = 0; i < msg_length; i++)
+//     {
+//         data[i] = mbox->buf[mbox->head];
+//         mbox->head = (mbox->head + 1) % MAX_MBOX_LENGTH;
+//     }
+    
+//     mbox->count -= msg_length;
+
+//     // 唤醒所有因为满而等待发送的进程
+//     while (!list_empty(&mbox->send_wait_queue))
+//     {
+//         do_unblock(mbox->send_wait_queue.next);
+//     }
+
+//     spin_lock_release(&mbox->lock);
+//     return msg_length;
+// }
+
 
 // [Task 4] 实现 sys_taskset
 // 如果 pid 为 0，修改当前进程；否则修改指定 pid 进程

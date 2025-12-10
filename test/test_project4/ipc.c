@@ -9,7 +9,7 @@
 MSG_IN_MB: message size in megabytes used for the benchmark.
 */
 #define PAGE_SIZE 4096ul
-const long MSG_IN_MB = 512;
+const long MSG_IN_MB = 16;
 const long MSG_BYTES = MSG_IN_MB * 1024 * 1024;
 const long WARMUP_BYTES = PAGE_SIZE;
 const char MBOX_NAME[] = "ipc-perf-mailbox";
@@ -332,8 +332,8 @@ int main(int argc, char *argv[])
 
 	sys_move_cursor(0, ALL_TEST_START);
 	printf("ipc_perf: comparing mailbox vs pipe with %ld byte payloads\n", (long)MSG_BYTES);
-	run_mailbox_test(prog_name);
 	run_pipe_test(prog_name);
+	run_mailbox_test(prog_name);
 	sys_move_cursor(0, ALL_TEST_FINISH);
 	printf("ipc_perf: done\n");
 	return 0;

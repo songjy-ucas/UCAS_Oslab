@@ -629,5 +629,42 @@ uintptr_t get_pte_of_user_addr(uintptr_t va, uintptr_t pgdir, int alloc)
     return (uintptr_t)&pte[vpn0];
 }
 
+// P4 Task5 新增
+/* =========================================================================
+ *              内存辅助函数 (用于 IPC 处理换页)
+ * ========================================================================= */
+
+// 辅助函数：检查虚拟地址所在的页是否在内存中。
+// 如果在 Swap 区，则强制换入 (Swap-In)。
+// 成功返回 1，失败（非法地址）返回 0。
+int check_and_swap_in(uintptr_t va) {
+    // 1. 获取当前进程的 PTE (不分配中间页表)
+    PTE *pte = (PTE *)get_pte_of_user_addr(va, current_running->pgdir, 0);
+    
+    if (!pte) return 0; // 页表项不存在
+
+    // 2. 如果页面已经在内存中，直接通过
+    if (*pte & _PAGE_PRESENT) {
+        return 1;
+    }
+
+    // 3. 如果页面在 Swap 分区中，必须换入！
+    // Mailbox 需要 CPU 读写数据，CPU 无法直接访问磁盘上的数据。
+    if (*pte & _PAGE_SWAP) {
+        // 调用你 mm.c 中实现的 uva_allocPage。
+        // 根据你的描述，uva_allocPage 内部会自动检测 _PAGE_SWAP 并执行 bios_sd_read。
+        // 这里的 1 表示分配 1 页。
+        uva_allocPage(1, va);
+        
+        // 再次检查确认
+        if (*pte & _PAGE_PRESENT) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+
 // rw 检测缺页命令行
 // exec rw 0x10800000 0x80200000 0xa0000320

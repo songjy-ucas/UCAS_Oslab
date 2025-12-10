@@ -75,6 +75,7 @@ static void init_jmptab(void)
     jmptab[MUTEX_INIT]      = (long (*)())do_mutex_lock_init;
     jmptab[MUTEX_ACQ]       = (long (*)())do_mutex_lock_acquire;
     jmptab[MUTEX_RELEASE]   = (long (*)())do_mutex_lock_release;
+    jmptab[PRINTL]          = (long (*)())printl;
 
     // TODO: [p2-task1] (S-core) initialize system call table.
     
@@ -328,8 +329,10 @@ int main(/*int argc, char *argv[]*/)
         
         // 1. 初始化全局数据结构
         smp_init(); // 初始化大内核锁
-        
+        init_jmptab(); 
+        current_running = pid0_pcb; // 指向 Core 0 的 idle PCB       
         lock_kernel(); // 上大内核锁，防止 Core 1 提前运行
+        current_running = NULL; // 避免误用
 
         // 强制转换为 short 指针并取值
         short num_tasks = *(volatile short *)TASK_NUM_ADDR;
@@ -339,10 +342,10 @@ int main(/*int argc, char *argv[]*/)
         // 必须在分配内存之前调用，初始化位图和Swap链表
         init_memory_manager();
         // 如果有 Swap 链表初始化，也在这里 (init_uva_alloc)
-        init_uva_alloc(); 
+        // init_uva_alloc(); 
         
         bss_check();
-        init_jmptab();
+
         init_task_info(num_tasks, task_info_start_sector);
         
         // init_pcb 内部现在使用 allocPage

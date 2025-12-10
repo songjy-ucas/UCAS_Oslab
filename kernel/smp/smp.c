@@ -3,6 +3,8 @@
 #include <os/smp.h>
 #include <os/lock.h>
 #include <os/kernel.h>
+#include <printk.h>
+#include <os/debug.h>
 
 // 大内核锁
 spin_lock_t kernel_lock;
@@ -24,11 +26,15 @@ void wakeup_other_hart()
 void lock_kernel() // 上锁
 {
     /* TODO: P3-TASK3 multicore*/
+    klog("Process '%d' Attempting to acquire BKL\n", current_running->pid);
     spin_lock_acquire(&kernel_lock);
+    klog("Process '%d' Acquired the BKL\n", current_running->pid);
 }
 
 void unlock_kernel() // 解锁
 {
     /* TODO: P3-TASK3 multicore*/
+    klog("Process '%d' Unlocking the BKL\n", current_running->pid);
     spin_lock_release(&kernel_lock);
 }
+

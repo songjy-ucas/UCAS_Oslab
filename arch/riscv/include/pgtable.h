@@ -83,6 +83,10 @@ static inline void set_satp(
 #define _PAGE_DIRTY (1 << 7)    /* Set by hardware on any write，已被修改(脏) */
 #define _PAGE_SOFT (1 << 8)     /* Reserved for software，软件保留位 */
 
+// [Task 3 Add] 定义 Swap 标志位，利用软件保留位
+// 当 _PAGE_PRESENT 为 0 且 _PAGE_SWAP 为 1 时，表示页面在磁盘 Swap 区
+#define _PAGE_SWAP (1 << 9)  
+
 #define _PAGE_PFN_SHIFT 10lu    // PPN 在 PTE 中的起始位是第10位
 
 #define VA_MASK ((1lu << 39) - 1) // 39位虚拟地址掩码

@@ -147,4 +147,7 @@ extern pid_t do_getpid();
 extern void do_taskset(int mask, int pid);
 /************************************************************/
 
+// 根据pid获取该pid对应的pcb的索引
+int get_pcb_index_by_pid(pid_t pid);
+
 #endif

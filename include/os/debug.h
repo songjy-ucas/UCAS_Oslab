@@ -3,6 +3,9 @@
 
 #include <os/smp.h>
 #include <printk.h>
+#include <csr.h>    // 包含 CSR 定义
+
+#define KERNEL_LOG
 
 #ifdef KERNEL_LOG
     #define klog(fmt, ...) \

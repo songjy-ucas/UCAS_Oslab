@@ -2,6 +2,7 @@
 #include <csr.h>
 #include <asm/regs.h>
 
+
 .macro SAVE_CONTEXT
   /* TODO: [p2-task3] save all general purpose registers here! */
   /* HINT: Pay attention to the function of tp and sp, and save them carefully! */
@@ -222,6 +223,17 @@ ENTRY(exception_handler_entry)
   /* TODO: [p2-task3] save context via the provided macro */
   
   SAVE_CONTEXT
+
+  /* ================== 新增代码开始 ================== */
+  /* 准备参数调用 C 打印函数: 
+     void debug_trap_handler(unsigned long scause, unsigned long stval, unsigned long sepc) 
+  */
+  csrr a0, scause  // 第1个参数
+  csrr a1, stval   // 第2个参数
+  csrr a2, sepc    // 第3个参数
+  
+  call debug_trap_handler
+  /* ================== 新增代码结束 ================== */
 
   // [P3-TASK3] 进入内核处理前获取大内核锁
   call lock_kernel

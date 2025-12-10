@@ -167,7 +167,7 @@ void do_unblock(list_node_t *pcb_node)
 // Helper function to find a free PCB
 static pcb_t *find_free_pcb()
 {
-    for (int i = 0; i < NUM_MAX_TASK; ++i) {
+    for (int i = 1; i < NUM_MAX_TASK; ++i) {
         if (pcb[i].status == TASK_EXITED || pcb[i].pid == -1) {
             return &pcb[i];
         }
@@ -309,25 +309,48 @@ void do_exit(void)
     // 1. 获取当前进程的PCB
     pcb_t *exiting_pcb = current_running;
 
-    // 2. 将当前进程的状态设置为 EXITED (僵尸态)。
-    // 这里我们不直接销毁 PCB，因为父进程可能还需要读取返回值 (waitpid)。我们只是标记它“死了”，资源回收通常由父进程的 waitpid 完成。
+    // ====================================================================
+    // [P4-TASK3 关键新增] 资源回收
+    // 必须在将 CPU 切换到其他进程之前，回收当前进程占用的所有内存资源
+    // ====================================================================
+    
+    // 调用一个辅助函数来完成所有内存回收工作
+    free_process_memory(exiting_pcb);
+
+
+    // ====================================================================
+    // [P4-TASK3 关键新增] 切换回内核地址空间
+    // 原因：exiting_pcb->pgdir 对应的页表内存刚刚可能已经被 free_process_memory
+    // 回收了。CPU 不能再继续使用一个已经被释放的页表。
+    // 我们必须安全地将 CPU 的地址空间切换回内核的根页表。
+    // ====================================================================
+    
+    set_satp(SATP_MODE_SV39, 0, PGDIR_PA >> NORMAL_PAGE_SHIFT);
+    local_flush_tlb_all();
+
+
+    // 2. 将当前进程的状态设置为 EXITED。
+    // PCB本身暂时不释放，等待父进程通过 waitpid 回收。
     exiting_pcb->status = TASK_EXITED;
 
-    // 3. 核心修改：唤醒正在等待它的父进程（或其他进程）
-    // 如果有进程（通常是父进程）之前调用了 waitpid 并在等待我，现在我退出了，需要把它们从阻塞状态唤醒。
+    // 3. 唤醒正在等待它的父进程
     while (!list_empty(&exiting_pcb->wait_list)) {
-        // 从等待队列中取出一个等待者
         pcb_t *waiter_pcb = list_entry(exiting_pcb->wait_list.next, pcb_t, list);
         list_del(&waiter_pcb->list);
-
-        // 将等待者的状态从 BLOCKED 改为 READY
         waiter_pcb->status = TASK_READY;
-
-        // 将等待者放回就绪队列，以便它可以被调度器选中
         list_add_tail(&waiter_pcb->list, &ready_queue);
     }
+    
+    // 如果有父进程，并且父进程没有在等我，可以向父进程发送信号（简化版中省略）
 
-    do_scheduler(); // 主动调度到其他进程
+    // 4. 主动放弃CPU，调用调度器
+    // 此时当前进程已经是 EXITED 态，它再也不会被调度到了。
+    do_scheduler(); 
+
+    // do_scheduler 永远不会返回到这里
+    // 因为当前进程的上下文已经被切换出去了，并且再也不会被切换回来。
+    printk("FATAL: Should not return from do_scheduler in do_exit!\n");
+    assert(0);
 }
 
 // [P3-TASK1] Kill a process
@@ -848,3 +871,884 @@ void do_taskset(int mask, int pid)
         }
     }
 }
+
+// 根据pid获取该pid对应的pcb的索引
+int get_pcb_index_by_pid(pid_t pid) {
+    for (int i = 0; i < NUM_MAX_TASK; i++) {
+        if (pcb[i].pid == pid) {
+            return i;
+        }
+    }
+    return -1; // 未找到
+}
+
+
+// #include <os/list.h>
+// #include <os/lock.h>
+// #include <os/sched.h>
+// #include <os/time.h>
+// #include <os/mm.h>
+// #include <os/loader.h>
+// #include <os/string.h> 
+// #include <os/smp.h>
+// #include <csr.h>   
+// #include <screen.h>
+// #include <printk.h>
+// #include <assert.h>
+// #include <pgtable.h>
+
+// #define USER_STACK_ADDR 0xf00010000
+// pcb_t pcb[NUM_MAX_TASK];
+// // const ptr_t pid0_stack = INIT_KERNEL_STACK + PAGE_SIZE;
+// // pcb_t pid0_pcb = {
+// //     .pid = 0,
+// //     .kernel_sp = (ptr_t)pid0_stack,
+// //     .user_sp = (ptr_t)pid0_stack
+// // };
+// pcb_t pid0_pcb[2]; 
+
+// const ptr_t pid0_stack_core0 = INIT_KERNEL_STACK_MASTER + PAGE_SIZE;
+// const ptr_t pid0_stack_core1 = INIT_KERNEL_STACK_SLAVE + PAGE_SIZE;
+
+// LIST_HEAD(ready_queue);
+// LIST_HEAD(sleep_queue);
+
+// /* global process id */
+//  pid_t process_id = 1;
+// register pcb_t * current_running asm("tp");
+
+// extern void ret_from_exception();
+
+// void do_scheduler(void)
+// {
+//     // TODO: [p2-task3] Check sleep queue to wake up PCBs
+
+//     /************************************************************/
+//     /* Do not touch this comment. Reserved for future projects. */
+//     /************************************************************/
+
+//     // TODO: [p2-task1] Modify the current_running pointer.
+
+
+//     // check_sleeping();
+//     // pcb_t *prev = current_running;
+//     // pcb_t *next;
+//     // if (!list_empty(&ready_queue)) {
+//     //     next = list_entry(ready_queue.next, pcb_t, list);
+
+//     //     list_del(ready_queue.next);
+//     // } else {
+//     //     next = &pid0_pcb;
+//     // }
+
+//     // if (prev != &pid0_pcb && prev->status == TASK_RUNNING) {
+//     //     prev->status = TASK_READY;
+//     //     list_add_tail(&prev->list, &ready_queue);
+//     // }
+//     // next->status = TASK_RUNNING;
+//     // current_running = next;
+//     // switch_to(prev, next);
+         
+//     uint64_t cpu_id = get_current_cpu_id();
+//     check_sleeping();
+
+//     pcb_t *prev = current_running;
+
+//     if (prev->status == TASK_RUNNING) {
+
+//         // if (prev != &pid0_pcb) {
+//         if (prev != &pid0_pcb[0] && prev != &pid0_pcb[1]) {
+//             prev->status = TASK_READY;
+//             list_add_tail(&prev->list, &ready_queue);
+//         }
+//     } else if (prev->status == TASK_BLOCKED) {
+//     } else if (prev->status == TASK_EXITED) {
+//     }
+
+//     pcb_t *next = NULL;
+//     //task3
+//     // if (!list_empty(&ready_queue)) {
+//     //     // 如果就绪队列不为空，取出队头的任务作为下一个
+//     //     next = list_entry(ready_queue.next, pcb_t, list);
+//     //     // 将其从就绪队列中移除
+//     //     list_del(ready_queue.next);
+//     // } else {
+//     //     // 如果就绪队列为空，说明当前没有其他任务可运行，只能运行 idle 任务
+//     //     next = &pid0_pcb[cpu_id];
+//     // }
+//     if (!list_empty(&ready_queue)) {
+//         list_node_t *pos, *n;
+//         list_for_each_safe(pos, n, &ready_queue) {
+//             pcb_t *candidate = list_entry(pos, pcb_t, list);
+            
+//             // 检查 candidate 的 mask 是否包含当前 cpu_id
+//             if (candidate->mask & (1 << cpu_id)) {
+//                 next = candidate;
+//                 list_del(pos); 
+//                 break; 
+//             }
+//         }
+//     }
+
+//     if (next == NULL) {
+//         next = &pid0_pcb[cpu_id];
+//     }
+//     next->core_id = cpu_id;
+//     current_running = next;
+//     current_running->status = TASK_RUNNING;
+//   // 只有当任务确实发生变化时才进行切换
+//     if (prev != next) {
+//         // [P4] 1. 获取下一个进程的页目录虚拟地址 (Kernel Virtual Address)
+//         // 确保你的 PCB 结构体中有 pgdir 成员，并且在创建进程时已初始化
+//         uintptr_t next_pgdir_kva = next->pgdir;
+
+//         // [P4] 2. 转换为物理地址 (Physical Address)
+//         // satp 寄存器需要的是物理页号，所以必须转换
+//         uintptr_t next_pgdir_pa = kva2pa(next_pgdir_kva);
+
+//         // [P4] 3. 切换 SATP 寄存器
+//         // 使用 SV39 模式，ASID 设为 0 (简化)，填入物理页号 (PA >> 12)
+//         set_satp(SATP_MODE_SV39, 0, next_pgdir_pa >> NORMAL_PAGE_SHIFT);
+
+//         // [P4] 4. 刷新 TLB
+//         // 必须操作，否则 CPU 还会用旧的缓存查表，导致崩溃
+//         local_flush_tlb_all();
+        
+//         // debug use
+//         // printk("Switch: PID %d -> %d, Next PGDIR: 0x%lx\n", 
+//         // prev->pid, next->pid, next->pgdir);
+        
+//         // [P4] 5. 切换寄存器上下文
+//         switch_to(prev, next);
+//     }
+//     // TODO: [p2-task1] switch_to current_running
+
+// }
+
+// void do_sleep(uint32_t sleep_time)
+// {
+//     // TODO: [p2-task3] sleep(seconds)
+//     // NOTE: you can assume: 1 second = 1 `timebase` ticks
+//     // 1. block the current_running
+//     // 2. set the wake up time for the blocked task
+//     // 3. reschedule because the current_running is blocked.
+//     // 1. block the current_running
+//     current_running->status = TASK_BLOCKED;
+
+//     // 2. set the wake up time for the blocked task
+//     current_running->wakeup_time = get_ticks() + (uint64_t)sleep_time * get_time_base();
+//     list_add_tail(&current_running->list, &sleep_queue);
+    
+//     // 3. reschedule because the current_running is blocked.
+//     do_scheduler();
+
+// }
+
+// void do_block(list_node_t *pcb_node, list_head *queue)
+// {
+//     // TODO: [p2-task2] block the pcb task into the block queue
+//     list_add_tail(pcb_node, queue);
+//     // 更新进程状态为阻塞
+//     current_running->status = TASK_BLOCKED;
+// }
+
+// void do_unblock(list_node_t *pcb_node)
+// {
+//     // TODO: [p2-task2] unblock the `pcb` from the block queue
+//     list_del(pcb_node);
+//     // 获取 pcb 的指针
+//     pcb_t* pcb_to_unblock = list_entry(pcb_node, pcb_t, list);
+//     // 更新进程状态为就绪
+//     pcb_to_unblock->status = TASK_READY;
+//     // 将 pcb 节点添加到全局就绪队列的尾部，等待调度
+//     list_add_tail(pcb_node, &ready_queue);
+// }
+
+
+
+// // Helper function to find a free PCB
+// static pcb_t *find_free_pcb()
+// {
+ 
+//     for (int i = 1; i < NUM_MAX_TASK; ++i) {
+//         if (pcb[i].status == TASK_EXITED || pcb[i].pid == -1) {
+//             return &pcb[i];
+//         }
+//     }
+//     return NULL;
+// }
+// extern void ret_from_exception();
+
+// // [P3-TASK1] A/C-Core implementation of do_exec
+// pid_t do_exec(char *name, int argc, char *argv[])
+// {
+//     // 1. 寻找空闲 PCB
+//     pcb_t *new_pcb = find_free_pcb();
+//     if (new_pcb == NULL) {
+//         printk("Error: No free PCB!\n");
+//         return -1;
+//     }
+
+//     // 2. [P4] 初始化页表
+//     // 分配一个新的页目录 (KVA)
+//     ptr_t pgdir = allocPage(1); 
+//     clear_pgdir(pgdir);
+//     // 复制内核空间的映射 (共享内核)
+//     share_pgtable(pgdir, pa2kva(PGDIR_PA));
+//     new_pcb->pgdir = pgdir; // 记录到 PCB
+
+//     // 3. [P4] 加载任务 (传入 pgdir)
+//     // Loader 会分配内存、建立映射、拷贝代码
+//     uint64_t entry_point = map_task(name, pgdir);
+//     if (entry_point == 0) {
+//         printk("Error: Task '%s' not found!\n", name);
+//         // 这里应该 freePage(pgdir) 并清理资源，简化起见略过
+//         return -1;
+//     }
+
+//     // 4. [P4] 分配并设置栈
+//     // 内核栈：物理分配 (因为 context switch 保存寄存器用的是物理内存/KVA)
+//     new_pcb->kernel_stack_base = allocPage(1);
+//     ptr_t kernel_stack = new_pcb->kernel_stack_base + PAGE_SIZE;
+
+//     // 用户栈：Loader 已经在 load_task_img 末尾为 0xf00010000 分配了物理页并建立了映射
+//     // 我们需要获取那个物理页的 KVA，以便写入 argv
+//     uintptr_t user_stack_base = USER_STACK_ADDR - PAGE_SIZE;
+//     // 使用 alloc_page_helper 获取已存在映射的物理页 KVA
+//     // (如果 loader 没分配，这里会自动分配，逻辑兼容)
+//     uintptr_t user_stack_kva = alloc_page_helper(user_stack_base, pgdir);
+    
+//     // 5. [P4] 处理 argv (复杂部分)
+//     // 目标：把 argv 字符串和指针数组写到用户栈里。
+//     // 难点：我们写的地址是 KVA (user_stack_kva)，但存入指针数组的值必须是 UVA (0xf000...)
+    
+//     int total_len = 0;
+//     for (int i = 0; i < argc; ++i) {
+//         total_len += strlen(argv[i]) + 1;
+//     }
+//     // 对齐
+//     total_len = (total_len + 15) & ~0xF;
+
+//     // 计算指针数组大小
+//     int ptr_size = (argc + 1) * sizeof(char *);
+
+//     // 计算栈顶偏移 (User Stack Top = USER_STACK_ADDR)
+//     // 数据布局：[高地址] ... [argv strings] [argv pointers] [低地址/sp]
+//     uintptr_t argv_strings_uva = USER_STACK_ADDR - total_len;
+//     uintptr_t argv_pointers_uva = argv_strings_uva - ptr_size;
+//     argv_pointers_uva -= sizeof(char *);
+//     uintptr_t final_user_sp = argv_pointers_uva;
+
+//     // 确保没有爆栈 (4KB)
+//     if (PAGE_SIZE - (USER_STACK_ADDR - final_user_sp) < 0) {
+//         printk("Error: Args too long!\n");
+//         return -1;
+//     }
+
+//     // 开始写入 (使用 KVA)
+//     // 计算 KVA 偏移: user_stack_kva 对应 USER_STACK_ADDR - PAGE_SIZE
+//     // 某个 UVA 对应的 KVA = user_stack_kva + (UVA - (USER_STACK_ADDR - PAGE_SIZE))
+    
+//     uintptr_t kva_base = user_stack_kva;
+//     uintptr_t uva_base = USER_STACK_ADDR - PAGE_SIZE;
+
+//     // 5.1 拷贝字符串
+//     char *curr_str_kva = (char *)(kva_base + (argv_strings_uva - uva_base));
+//     uintptr_t *curr_ptr_kva = (uintptr_t *)(kva_base + (argv_pointers_uva - uva_base));
+    
+//     uintptr_t curr_str_uva = argv_strings_uva;
+
+//     for (int i = 0; i < argc; ++i) {
+//         strcpy(curr_str_kva, argv[i]);
+//         // 关键：指针数组里存的是 用户虚拟地址 (UVA)
+//         *curr_ptr_kva = curr_str_uva; 
+        
+//         int len = strlen(argv[i]) + 1;
+//         curr_str_kva += len;
+//         curr_str_uva += len;
+//         curr_ptr_kva++;
+//     }
+//     *curr_ptr_kva = 0; // NULL terminator
+//     *(curr_ptr_kva + 1) = 0;
+//     // 6. 初始化 PCB 字段
+//     new_pcb->pid = process_id++;
+//     new_pcb->parent_pid = current_running->pid;
+//     new_pcb->mask = current_running->mask;
+//     new_pcb->core_id = -1;
+//     new_pcb->status = TASK_READY;
+//     new_pcb->cursor_x = new_pcb->cursor_y = 0;
+//     list_init(&new_pcb->wait_list);
+
+//     // 7. 初始化寄存器上下文
+//     regs_context_t *pt_regs = (regs_context_t *)(kernel_stack - sizeof(regs_context_t));
+//     memset(pt_regs, 0, sizeof(regs_context_t));
+
+//     pt_regs->regs[10] = argc;             // a0
+//     pt_regs->regs[11] = argv_pointers_uva;// a1 (argv array base UVA)
+//     pt_regs->regs[2]  = final_user_sp;    // sp (User SP UVA)
+//     pt_regs->regs[4]  = (reg_t)new_pcb;   // tp
+//     pt_regs->sepc     = entry_point;
+//     pt_regs->sstatus  = (read_csr(sstatus) | SR_SPIE |SR_SUM) & ~SR_SPP; // 用户态
+
+//     switchto_context_t *pt_switchto = (switchto_context_t *)((ptr_t)pt_regs - sizeof(switchto_context_t));
+//     pt_switchto->regs[0] = (reg_t)&ret_from_exception;
+
+//     new_pcb->kernel_sp = (reg_t)pt_switchto;
+//     new_pcb->user_sp = final_user_sp; // 记录一下
+//     local_flush_icache_all();
+//     list_add_tail(&new_pcb->list, &ready_queue);
+//     return new_pcb->pid;
+// }
+
+// static void free_pcb_resources(pcb_t *p) {
+//     // 1. 释放 L2 页目录页
+//     if (p->pgdir != 0) {
+//         freePage(p->pgdir);
+//         p->pgdir = 0;
+//     }
+//     // 2. 释放内核栈
+//     if (p->kernel_stack_base != 0) {
+//         freePage(p->kernel_stack_base);
+//         p->kernel_stack_base = 0;
+//     }
+    
+//     // 3. 将PCB标记为完全未使用，以便下次分配
+//     p->status = TASK_EXITED;
+//     p->pid = -1; 
+// }
+
+
+// // [修改后] 进程退出
+// void do_exit(void)
+// {
+//     pcb_t *exiting_pcb = current_running;
+
+//     // 1. [核心修改] 立即回收所有内存资源
+//     //    在进程状态改变前，我们拥有完整的上下文信息来回收内存。
+//     free_process_memory(exiting_pcb->pgdir);
+
+//     // 2. 释放所有持有的锁 (如果你的锁模块有这个功能)
+//     check_and_release_locks(exiting_pcb->pid);
+
+//     // 3. 将状态设置为 EXITED，成为僵尸进程
+//     exiting_pcb->status = TASK_EXITED;
+
+//     // 4. 唤醒正在等待它的父进程 (waitpid)
+//     while (!list_empty(&exiting_pcb->wait_list)) {
+//         pcb_t *waiter_pcb = list_entry(exiting_pcb->wait_list.next, pcb_t, list);
+//         // 将等待者从等待队列移到就绪队列
+//         do_unblock(&waiter_pcb->list);
+//     }
+
+//     // 5. 调用调度器，让出CPU
+//     do_scheduler();
+    
+//     // Should never reach here
+//     assert(0);
+// }
+
+// int do_kill(pid_t pid)
+// {
+//     if (pid <= 0) {
+//         return 0; 
+//     }
+
+//     pcb_t *target_pcb = NULL;
+//     for (int i = 0; i < NUM_MAX_TASK; ++i) {
+//         if (pcb[i].pid == pid) {
+//             target_pcb = &pcb[i];
+//             break;
+//         }
+//     }
+
+//     if (target_pcb == NULL || target_pcb->status == TASK_EXITED) {
+//         return 0; // 进程不存在或已退出
+//     }
+    
+//     // 1. [核心修改] 回收目标进程的内存
+//     free_process_memory(target_pcb->pgdir);
+
+//     // 2. 释放其持有的锁
+//     check_and_release_locks(target_pcb->pid);
+    
+//     // 3. 从其所在的队列中移除 (就绪或阻塞)
+//     if (target_pcb->status == TASK_READY || target_pcb->status == TASK_BLOCKED) {
+//         list_del(&target_pcb->list);
+//     }
+
+//     // 4. 将状态设置为 EXITED
+//     target_pcb->status = TASK_EXITED;
+
+//     // 5. 唤醒等待它的父进程
+//     while (!list_empty(&target_pcb->wait_list)) {
+//         pcb_t *waiter_pcb = list_entry(target_pcb->wait_list.next, pcb_t, list);
+//         do_unblock(&waiter_pcb->list);
+//     }
+
+//     // 6. 如果杀死的是自己，则需要调度
+//     if (target_pcb == current_running) {
+//         do_scheduler();
+//     }
+
+//     return 1; // 成功
+// }
+
+// // [P3-TASK1] Wait for a child process
+// int do_waitpid(pid_t pid)
+// {
+//     // 1. Find the target child process
+//     pcb_t *child_pcb = NULL;
+//     for (int i = 0; i < NUM_MAX_TASK; ++i) {
+//         if (pcb[i].pid == pid) {
+//             child_pcb = &pcb[i];
+//             break;
+//         }
+//     }
+
+//     // If no such process, or it's not our child (optional check), return error
+//     if (child_pcb == NULL || child_pcb->parent_pid != current_running->pid) {
+//         return -1; // Not found or not a child
+//     }
+
+//     // 2. Check child's status
+//     if (child_pcb->status == TASK_EXITED) {
+//         // Child has already exited (is a "zombie"), clean it up now.
+//         free_pcb_resources(child_pcb);
+//         return pid;
+//     }
+
+//     // 3. If child is still running, block the current process
+//     // and add it to the child's wait_list.
+//     current_running->status = TASK_BLOCKED;
+//     list_add_tail(&current_running->list, &child_pcb->wait_list);
+    
+//     // 4. Yield to scheduler
+//     do_scheduler();
+
+//     // 5. When woken up, the child has exited. Clean up its resources.
+//     free_pcb_resources(child_pcb);
+
+//     return pid;
+// }
+
+// void do_process_show()
+// {
+//     printk("[Process Table]:\n");
+
+//     for (int i = 0; i < NUM_MAX_TASK; ++i) {
+//         if (pcb[i].pid != -1 && pcb[i].status != TASK_EXITED) {
+//             char *status_str;
+//             switch (pcb[i].status) {
+//                 case TASK_BLOCKED:
+//                     status_str = "BLOCKED";
+//                     break;
+//                 case TASK_RUNNING:
+//                     status_str = "RUNNING";
+//                     break;
+//                 case TASK_READY:
+//                     status_str = "READY  ";
+//                     break;
+//                 default:
+//                     status_str = "UNKNOWN";
+//                     break;
+//             }
+//             printk("[%d] PID : %d\tSTATUS : %s\tmask: 0x%x", 
+//                    i, 
+//                    pcb[i].pid, 
+//                    status_str, 
+//                    pcb[i].mask);
+
+//             if (pcb[i].status == TASK_RUNNING) {
+//                 printk("\tRunning on core %d", pcb[i].core_id);
+//             }
+
+//             printk("\n");
+//         }
+//     }
+// }
+// pid_t do_getpid()
+// {
+//     return current_running->pid;
+// }
+
+// /* =========================================================================
+//  *                         同步原语：屏障 (Barrier)
+//  * ========================================================================= */
+// barrier_t barriers[BARRIER_NUM];
+
+// void init_barriers(void)
+// {
+//     for (int i = 0; i < BARRIER_NUM; i++)
+//     {
+//         barriers[i].key = -1; // -1 表示该槽位未使用
+//         barriers[i].goal = 0; // 目标到达数量
+//         barriers[i].current_count = 0; // 当前已到达数量
+//         list_init(&barriers[i].wait_queue); // 初始化等待队列
+//     }
+// }
+
+// // 初始化一个屏障
+// int do_barrier_init(int key, int goal)
+// {
+//     // 1. 检查是否已经存在该 key 的 barrier，如果有直接返回索引
+//     for (int i = 0; i < BARRIER_NUM; i++)
+//     {
+//         if (barriers[i].key == key)
+//         {
+//             return i;
+//         }
+//     }
+
+//     // 2. 寻找一个空的槽位创建新的 barrier
+//     for (int i = 0; i < BARRIER_NUM; i++)
+//     {
+//         if (barriers[i].key == -1)
+//         {
+//             barriers[i].key = key;
+//             barriers[i].goal = goal;
+//             barriers[i].current_count = 0;
+//             list_init(&barriers[i].wait_queue);
+//             return i;
+//         }
+//     }
+
+//     return -1; 
+// }
+
+// // 未全到时等待屏障，全到后唤醒所有进程
+// void do_barrier_wait(int bar_idx)
+// {
+//     if (bar_idx < 0 || bar_idx >= BARRIER_NUM) return;
+    
+//     barrier_t *bar = &barriers[bar_idx];
+
+//     // 增加到达计数
+//     bar->current_count++;
+
+//     if (bar->current_count >= bar->goal)
+//     {
+//         // 屏障任务完成。重置计数器以便复用，并唤醒所有在排队的兄弟进程。
+//         bar->current_count = 0;
+        
+//         while (!list_empty(&bar->wait_queue))
+//         {
+//             // 逐个唤醒队首的进程
+//             do_unblock(bar->wait_queue.next);
+//         }
+//     }
+//     else
+//     {
+//         // 阻塞，进入等待队列
+//         do_block(&current_running->list, &bar->wait_queue);
+//         // 这里的 do_scheduler 会导致上下文切换，当前进程暂停。
+//         do_scheduler();
+//     }
+// }
+
+// void do_barrier_destroy(int bar_idx)
+// {
+//     if (bar_idx < 0 || bar_idx >= BARRIER_NUM) return;
+    
+//     // 简单地标记为未使用，释放槽位
+//     barriers[bar_idx].key = -1;
+//     barriers[bar_idx].goal = 0;
+//     barriers[bar_idx].current_count = 0;
+// }
+
+// /* =========================================================================
+//  *                     同步原语：条件变量 (Condition Variable)
+//  * ========================================================================= */
+
+// condition_t conditions[CONDITION_NUM];
+
+// void init_conditions(void)
+// {
+//     for (int i = 0; i < CONDITION_NUM; i++)
+//     {
+//         conditions[i].key = -1;
+//         list_init(&conditions[i].wait_queue);
+//     }
+// }
+
+// // 初始化条件变量，逻辑同 Barrier
+// int do_condition_init(int key)
+// {
+//     // 1. 查找是否存在
+//     for (int i = 0; i < CONDITION_NUM; i++)
+//     {
+//         if (conditions[i].key == key)
+//         {
+//             return i;
+//         }
+//     }
+
+//     // 2. 寻找空位
+//     for (int i = 0; i < CONDITION_NUM; i++)
+//     {
+//         if (conditions[i].key == -1)
+//         {
+//             conditions[i].key = key;
+//             list_init(&conditions[i].wait_queue);
+//             return i;
+//         }
+//     }
+
+//     return -1;
+// }
+
+// // 条件等待wait   cond_idx: 条件变量索引 mutex_idx: 当前持有的互斥锁索引
+// void do_condition_wait(int cond_idx, int mutex_idx)
+// {
+//     if (cond_idx < 0 || cond_idx >= CONDITION_NUM) return;
+
+//     condition_t *cond = &conditions[cond_idx];
+
+//     // 等条件满足---> 阻塞当前进程
+//     do_block(&current_running->list, &cond->wait_queue);
+
+//     // 在阻塞前，必须释放持有的互斥锁！避免造成死锁。
+//     do_mutex_lock_release(mutex_idx);
+
+//     // 调度 (让出 CPU) 进程在此处暂停，直到 do_condition_signal/broadcast 唤醒它。
+//     do_scheduler();
+
+//     // 唤醒后，重新竞争并获取互斥锁。
+//     do_mutex_lock_acquire(mutex_idx);
+// }
+
+// // signal操作 
+// void do_condition_signal(int cond_idx)
+// {
+//     if (cond_idx < 0 || cond_idx >= CONDITION_NUM) return;
+
+//     condition_t *cond = &conditions[cond_idx];
+
+//     // 如果有等的进程，唤醒队列中的第一个等待者
+//     if (!list_empty(&cond->wait_queue))
+//     {
+//         do_unblock(cond->wait_queue.next);
+//     }
+// }
+
+// // broadcast操作
+// void do_condition_broadcast(int cond_idx)
+// {
+//     if (cond_idx < 0 || cond_idx >= CONDITION_NUM) return;
+
+//     condition_t *cond = &conditions[cond_idx];
+
+//     // 遍历队列，唤醒所有在等待这个条件的进程
+//     while (!list_empty(&cond->wait_queue))
+//     {
+//         do_unblock(cond->wait_queue.next);
+//     }
+// }
+
+// void do_condition_destroy(int cond_idx)
+// {
+//     if (cond_idx < 0 || cond_idx >= CONDITION_NUM) return;
+
+//     conditions[cond_idx].key = -1;
+// }
+
+
+// /* =========================================================================
+//  *                     进程间通信：信箱 (Mailbox)
+//  * ========================================================================= */
+
+// mailbox_t mboxes[MBOX_NUM];
+
+// void init_mbox()
+// {
+//     for (int i = 0; i < MBOX_NUM; i++)
+//     {
+//         mboxes[i].open_refs = 0; // 有多少人打开了它
+//         mboxes[i].name[0] = '\0';
+//         mboxes[i].head = 0; // 读指针
+//         mboxes[i].tail = 0; // 写指针
+//         mboxes[i].count = 0; // 当前缓冲区的字节数
+        
+//         spin_lock_init(&mboxes[i].lock); // 用自旋锁保护并发访问
+//         list_init(&mboxes[i].send_wait_queue); // 发送等待队列（满时等待）
+//         list_init(&mboxes[i].recv_wait_queue); // 接收等待队列（空时等待）
+//     }
+// }
+
+// // 建立打开
+// int do_mbox_open(char *name)
+// {
+//     // 查找是否已存在同名信箱
+//     for (int i = 0; i < MBOX_NUM; i++)
+//     {
+//         if (mboxes[i].open_refs > 0 && strcmp(mboxes[i].name, name) == 0)
+//         {
+//             spin_lock_acquire(&mboxes[i].lock); 
+//             mboxes[i].open_refs++;
+//             spin_lock_release(&mboxes[i].lock);
+//             return i; // 返回信箱 ID
+//         }
+//     }
+
+//     // 如果不存在，找一个空闲槽位创建
+//     for (int i = 0; i < MBOX_NUM; i++)
+//     {
+//         if (mboxes[i].open_refs == 0)
+//         {
+//             spin_lock_acquire(&mboxes[i].lock);
+//             // 拿锁后再次确认它没被别人抢走
+//             if (mboxes[i].open_refs == 0) 
+//             {
+//                 strcpy(mboxes[i].name, name);
+//                 mboxes[i].open_refs = 1;
+//                 mboxes[i].head = 0;
+//                 mboxes[i].tail = 0;
+//                 mboxes[i].count = 0;
+//                 list_init(&mboxes[i].send_wait_queue);
+//                 list_init(&mboxes[i].recv_wait_queue);
+                
+//                 spin_lock_release(&mboxes[i].lock);
+//                 return i;
+//             }
+//             spin_lock_release(&mboxes[i].lock);
+//         }
+//     }
+
+//     return -1;
+// }
+
+// // 关闭信箱
+// void do_mbox_close(int mbox_idx)
+// {
+//     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return;
+    
+//     mailbox_t *mbox = &mboxes[mbox_idx];
+    
+//     spin_lock_acquire(&mbox->lock);
+    
+//     if (mbox->open_refs > 0)
+//     {
+//         mbox->open_refs--; 
+//         if (mbox->open_refs == 0)
+//         {
+//             // 对于最后一个使用者，有义务释放mbox
+//             mbox->name[0] = '\0';
+//             mbox->count = 0;
+//             mbox->head = 0;
+//             mbox->tail = 0;
+//         }
+//     }
+    
+//     spin_lock_release(&mbox->lock);
+// }
+
+// // 生产者发送 
+// int do_mbox_send(int mbox_idx, void * msg, int msg_length)
+// {
+//     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return 0;
+//     if (msg_length <= 0) return 0;
+//     // 如果单条消息超过信箱总容量，返回失败
+//     if (msg_length > MAX_MBOX_LENGTH) return 0; 
+
+//     mailbox_t *mbox = &mboxes[mbox_idx];
+//     char *data = (char *)msg;
+
+//     spin_lock_acquire(&mbox->lock); // 上锁
+
+//     // 剩余空间不足时，循环等待
+//     while ( (MAX_MBOX_LENGTH - mbox->count) < msg_length )
+//     {
+//         do_block(&current_running->list, &mbox->send_wait_queue);            
+//         spin_lock_release(&mbox->lock); // 必须放锁 否则调度出去，其它进程拿不到锁就死锁了
+//         do_scheduler(); 
+//         spin_lock_acquire(&mbox->lock); // 唤醒后重新抢锁检查条件
+        
+//         // 唤醒后检查信箱是否被意外关闭
+//         if (mbox->open_refs == 0) {
+//             spin_lock_release(&mbox->lock);
+//             return 0;
+//         }
+//     }
+
+//     // 空间足够一次性写入 则写入
+//     for (int i = 0; i < msg_length; i++)
+//     {
+//         mbox->buf[mbox->tail] = data[i];
+//         mbox->tail = (mbox->tail + 1) % MAX_MBOX_LENGTH;
+//     }
+    
+//     mbox->count += msg_length; // 已有字节数增加
+
+//     // 写入了数据，唤醒所有因为空而等待接收的进程
+//     while (!list_empty(&mbox->recv_wait_queue))
+//     {
+//         do_unblock(mbox->recv_wait_queue.next);
+//     }
+
+//     spin_lock_release(&mbox->lock);
+//     return msg_length; 
+// }
+
+// // 消费者接收
+// int do_mbox_recv(int mbox_idx, void * msg, int msg_length)
+// {
+//     if (mbox_idx < 0 || mbox_idx >= MBOX_NUM) return 0;
+//     if (msg_length <= 0) return 0;
+    
+//     mailbox_t *mbox = &mboxes[mbox_idx];
+//     char *data = (char *)msg;
+
+//     spin_lock_acquire(&mbox->lock); // 上锁
+
+//     // 数据少于目标读取，循环等待
+//     while (mbox->count < msg_length)
+//     {
+//         do_block(&current_running->list, &mbox->recv_wait_queue);  
+//         spin_lock_release(&mbox->lock); // 放锁
+//         do_scheduler(); 
+//         spin_lock_acquire(&mbox->lock);
+        
+//         if (mbox->open_refs == 0) {
+//             spin_lock_release(&mbox->lock);
+//             return 0;
+//         }
+//     }
+
+//     // 从环形缓冲区读到用户 buffer
+//     for (int i = 0; i < msg_length; i++)
+//     {
+//         data[i] = mbox->buf[mbox->head];
+//         mbox->head = (mbox->head + 1) % MAX_MBOX_LENGTH;
+//     }
+    
+//     mbox->count -= msg_length;
+
+//     // 唤醒所有因为满而等待发送的进程
+//     while (!list_empty(&mbox->send_wait_queue))
+//     {
+//         do_unblock(mbox->send_wait_queue.next);
+//     }
+
+//     spin_lock_release(&mbox->lock);
+//     return msg_length;
+// }
+
+// // [Task 4] 实现 sys_taskset
+// // 如果 pid 为 0，修改当前进程；否则修改指定 pid 进程
+// void do_taskset(int mask, int pid)
+// {
+//     // 如果 mask 为 0，这通常是非法的
+//     if (mask == 0) return;
+
+//     if (pid == 0) {
+//         current_running->mask = mask;
+//     } else {
+//         // 遍历进程表找到对应 pid
+//         // 假设 NUM_MAX_TASK 是最大支持任务数
+//         for (int i = 0; i < NUM_MAX_TASK; i++) {
+//             if (pcb[i].pid == pid && pcb[i].status != TASK_EXITED) {
+//                 pcb[i].mask = mask;
+//                 return;
+//             }
+//         }
+//     }
+// }

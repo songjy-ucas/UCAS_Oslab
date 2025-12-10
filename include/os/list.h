@@ -105,8 +105,4 @@ static inline int list_empty(const list_head *head)
 #define list_entry(ptr, type, member) \
     (type *)((char *)(ptr) - offsetof(type, member))
 
-// #define list_for_each_safe(pos, n, head) \
-//     for (pos = (head)->next, n = pos->next; pos != (head); \
-//          pos = n, n = pos->next)
-
 #endif

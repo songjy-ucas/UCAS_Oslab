@@ -96,5 +96,8 @@ extern uint64_t image_end_sec; // Swap 区起始扇区
 // [P4-Task4] 获取当前系统剩余内存大小
 size_t do_get_free_memory();
 
+
+// [P4-Task5] 
+uintptr_t get_pte_of_user_addr(uintptr_t va, uintptr_t pgdir, int alloc);
 #endif /* MM_H */
 

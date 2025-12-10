@@ -136,4 +136,31 @@ int do_mbox_recv(int mbox_idx, void * msg, int msg_length);
 
 /************************************************************/
 
+// P4 Task5 ----------------- pipe 管道 -----------------
+#define PIPE_NAME_LEN 32
+#define PIPE_BUFFER_SIZE 1024 // 缓冲区大小，单位是“页” (即支持缓存 1024 * 4KB 数据)
+#define MAX_PIPES 16
+
+typedef struct pipe {
+    int valid;                  // 是否有效/被占用
+    char name[PIPE_NAME_LEN];   // 管道名称
+    
+    // 循环队列，存储的是物理页号 (PPN)
+    uint64_t page_buffer[PIPE_BUFFER_SIZE]; 
+    int head;                   // 写索引
+    int tail;                   // 读索引
+    int count;                  // 当前缓冲区内的页数
+
+    spin_lock_t lock;           // 自旋锁
+    
+    list_head send_wait_queue;  // 管道满时，发送者等待队列
+    list_head recv_wait_queue;  // 管道空时，接收者等待队列
+} pipe_t;
+
+void init_pipes(void);
+int do_pipe_open(const char *name);
+long do_pipe_take_pages(int pipe_idx, void *src, size_t length);
+long do_pipe_give_pages(int pipe_idx, void *dst, size_t length);
+
+
 #endif

@@ -273,13 +273,12 @@ static void init_syscall(void)
     syscall[SYSCALL_TASKSET]        = (long (*)())do_taskset;
 
     // Pro4 新增
-    syscall[SYSCALL_PIPE_OPEN] = (long (*)())do_mbox_open; // 如果 pipe 实际上就是 mailbox
-
+    syscall[SYSCALL_PIPE_OPEN] = (long (*)())do_pipe_open; // 如果 pipe 实际上就是 mailbox
+    syscall[SYSCALL_PIPE_TAKE] = (long (*)())do_pipe_take_pages; // 对应 take
+    syscall[SYSCALL_PIPE_GIVE] = (long (*)())do_pipe_give_pages;  // 对应 give (detach)
+    
     // P4 Task4 新增
-    syscall[SYSCALL_FREE_MEM] = (long (*)())do_get_free_memory;
-
-    syscall[SYSCALL_PIPE_TAKE] = (long (*)())shm_page_get; // 对应 take
-    syscall[SYSCALL_PIPE_GIVE] = (long (*)())shm_page_dt;  // 对应 give (detach)
+    syscall[SYSCALL_FREE_MEM] = (long (*)())do_get_free_memory;  
 }
 
 /* [P4-Task1] 新增: 取消临时映射的辅助函数 */
@@ -348,7 +347,7 @@ int main(/*int argc, char *argv[]*/)
         
         bss_check();
         init_jmptab(); 
-        
+
         init_task_info(num_tasks, task_info_start_sector);
         
         // init_pcb 内部现在使用 allocPage

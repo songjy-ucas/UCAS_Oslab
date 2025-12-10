@@ -581,3 +581,53 @@ size_t do_get_free_memory()
 
     return free_pages * PAGE_SIZE; // 返回字节数
 }
+
+
+// [P4-Task5] 辅助函数：根据虚拟地址获取 PTE 指针
+// va: 虚拟地址
+// pgdir: 页目录基地址 (内核虚地址)
+// alloc: 如果中间页表不存在，是否分配？(Receiver传1, Sender传0)
+// 返回值: 指向对应 PTE 的指针 (内核虚地址)，如果失败返回 0
+uintptr_t get_pte_of_user_addr(uintptr_t va, uintptr_t pgdir, int alloc)
+{
+    va &= VA_MASK;
+    uint64_t vpn2 = (va >> 30) & 0x1FF;
+    uint64_t vpn1 = (va >> 21) & 0x1FF;
+    uint64_t vpn0 = (va >> 12) & 0x1FF;
+
+    PTE *pgd = (PTE*)pgdir;
+
+    // --- Level 2 (Root) ---
+    if ((pgd[vpn2] & _PAGE_PRESENT) == 0) {
+        if (!alloc) return 0; // 不分配则直接返回失败
+
+        // 分配 Level 1 页表
+        ptr_t new_page = allocPage(1);
+        set_pfn(&pgd[vpn2], kva2pa(new_page) >> NORMAL_PAGE_SHIFT);
+        set_attribute(&pgd[vpn2], _PAGE_PRESENT);
+        clear_pgdir(new_page);
+    }
+
+    // --- Level 1 (PMD) ---
+    // 通过 get_pa 获取物理地址，再通过 pa2kva 转为内核虚地址以便访问
+    PTE *pmd = (PTE *)pa2kva((get_pa(pgd[vpn2])));
+    
+    if ((pmd[vpn1] & _PAGE_PRESENT) == 0) {
+        if (!alloc) return 0;
+
+        // 分配 Level 0 页表
+        ptr_t new_page = allocPage(1);
+        set_pfn(&pmd[vpn1], kva2pa(new_page) >> NORMAL_PAGE_SHIFT);
+        set_attribute(&pmd[vpn1], _PAGE_PRESENT);
+        clear_pgdir(new_page);
+    }
+
+    // --- Level 0 (Leaf PTE) ---
+    PTE *pte = (PTE *)pa2kva(get_pa(pmd[vpn1]));
+
+    // 返回指向最终页表项的指针 (地址)
+    return (uintptr_t)&pte[vpn0];
+}
+
+// rw 检测缺页命令行
+// exec rw 0x10800000 0x80200000 0xa0000320

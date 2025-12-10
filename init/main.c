@@ -275,7 +275,9 @@ static void init_syscall(void)
     // Pro4 新增
     syscall[SYSCALL_PIPE_OPEN] = (long (*)())do_mbox_open; // 如果 pipe 实际上就是 mailbox
 
-    // P4 Task4 要求实现共享内存
+    // P4 Task4 新增
+    syscall[SYSCALL_FREE_MEM] = (long (*)())do_get_free_memory;
+
     syscall[SYSCALL_PIPE_TAKE] = (long (*)())shm_page_get; // 对应 take
     syscall[SYSCALL_PIPE_GIVE] = (long (*)())shm_page_dt;  // 对应 give (detach)
 }

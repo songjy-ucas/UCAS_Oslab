@@ -314,3 +314,7 @@ long sys_pipe_give_pages(int pipe_idx, void *src, size_t length)
     return invoke_syscall(SYSCALL_PIPE_GIVE, (uintptr_t)pipe_idx, (uintptr_t)src, (uintptr_t)length, 0, 0);
 }
 /************************************************************/
+
+size_t sys_get_free_memory(){
+    return (size_t)invoke_syscall(SYSCALL_FREE_MEM, 0, 0, 0, 0, 0);
+}

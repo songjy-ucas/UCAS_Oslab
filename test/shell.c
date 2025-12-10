@@ -111,6 +111,37 @@ void print_logo() {
     printf("                                                             \r\n");
 }
 
+// 2. 实现 free 命令的处理函数
+void exec_free(int argc, char *argv[])
+{
+    // 调用系统调用获取空闲字节数
+    size_t free_bytes = sys_get_free_memory();
+    
+    // 检查是否包含 -h 选项
+    int human_readable = 0;
+    if (argc > 1 && strcmp(argv[1], "-h") == 0) {
+        human_readable = 1;
+    }
+
+    // 输出结果
+    printf("System Memory Status:\n");
+    if (!human_readable) {
+        // 默认格式：直接输出字节
+        printf("  Free Memory: %ld Bytes\n", free_bytes);
+    } else {
+        // -h 格式：自动转换单位 (B -> KiB -> MiB)
+        if (free_bytes < 1024) {
+            printf("  Free Memory: %ld B\n", free_bytes);
+        } else if (free_bytes < 1024 * 1024) {
+            printf("  Free Memory: %ld KiB\n", free_bytes / 1024);
+        } else {
+            // 保留一位小数，例如 12.5 MiB
+            size_t mib = free_bytes / (1024 * 1024);
+            size_t remainder = (free_bytes % (1024 * 1024)) * 10 / (1024 * 1024);
+            printf("  Free Memory: %ld.%ld MiB\n", mib, remainder);
+        }
+    }
+}
 
 int main(void)
 {
@@ -244,6 +275,8 @@ int main(void)
         // 交互界面，识别命令行
         if (strcmp(argv[0], "ps") == 0) {
             sys_ps();
+        } else if(strcmp(argv[0], "free") == 0) {
+            exec_free(argc, argv);
         } else if (strcmp(argv[0], "clear") == 0) {
             sys_clear();
             sys_move_cursor(0, SHELL_BEGIN);

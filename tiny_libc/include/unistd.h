@@ -58,7 +58,7 @@ int sys_mbox_recv(int mbox_idx, void *msg, int msg_length);
 void sys_taskset(int mask, int pid);
 
 /* TODO: [P4 task4] free memory*/
-size_t sys_free_mem(void);
+size_t sys_get_free_memory(void);
 /* TODO: [P4 task5] pipe*/
 int sys_pipe_open(const char *name);
 long sys_pipe_give_pages(int pipe_idx, void *src, size_t length);

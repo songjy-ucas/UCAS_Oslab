@@ -115,6 +115,8 @@ void free_process_memory(pcb_t *proc);
 extern alloc_info_t alloc_info[USER_PAGE_MAX_NUM];
 extern uint64_t image_end_sec; // Swap 区起始扇区
 
+PTE* find_pte(uintptr_t va, uintptr_t pgdir);
+
 // [P4-Task4] 获取当前系统剩余内存大小
 size_t do_get_free_memory();
 
@@ -125,5 +127,8 @@ int check_and_swap_in(uintptr_t va);
 void update_page_mapping_info(uintptr_t pa, pid_t new_pid, uintptr_t new_uva);
 void verify_ptr_and_pin_page(uintptr_t pa);
 void register_page_for_process(uintptr_t pa, uintptr_t uva, pid_t pid);
+
+// [P5-Task1]
+int kernel_map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir);
 #endif /* MM_H */
 

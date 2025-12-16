@@ -25,7 +25,7 @@
 // #define KERN_PAGE_MAX_NUM 512 // 不再使用这个宏
 
 // [P4-TASK3 START] 定义换页阈值和Swap起始扇区
-#define SWAP_ENABLE_THRESHOLD 32      // 设置可用物理页为16页
+#define SWAP_ENABLE_THRESHOLD 32      // 设置可用物理页为16页 --- > 改成32，debug发现执行用户程序之前就有24个页了，这24个是allocpage出来的，不是uva_allocpage的，in_mem_list都没有追踪这几个
 uint64_t image_end_sec = 30000; // 假设Swap区从磁盘第30000扇区开始
 
 #define PPN_MASK 0x1FF
@@ -665,6 +665,68 @@ int check_and_swap_in(uintptr_t va) {
     return 0;
 }
 
+// 更新物理地址 pa 对应的页面元数据，将其归属权转移给 new_pid 的 new_uva
+void update_page_mapping_info(uintptr_t pa, pid_t new_pid, uintptr_t new_uva) {
+    // 遍历在内存中的页面列表
+    list_node_t *node = in_mem_list.next;
+    while (node != &in_mem_list) {
+        alloc_info_t *info = list_entry(node, alloc_info_t, lnode);
+        if (info->pa == pa) {
+            // 找到了对应的物理页，更新所有者信息
+            info->pgdir_id = new_pid;
+            info->uva = new_uva;
+            return;
+        }
+        node = node->next;
+    }
+    // 如果在 in_mem_list 没找到，说明逻辑有严重错误（Pipe传递的必须是物理页）
+    // 或者该页是内核页未被 alloc_info 管理。
+}
+
+// [mm.c] 新增
+
+// 1. 从换页管理系统中移除页面（Pin）
+// 用于 Pipe Give：页面进入内核缓冲区，不再受 Swap 算法管理
+void verify_ptr_and_pin_page(uintptr_t pa) {
+    list_node_t *node = in_mem_list.next;
+    while (node != &in_mem_list) {
+        alloc_info_t *info = list_entry(node, alloc_info_t, lnode);
+        if (info->pa == pa) {
+            // 从内存链表中移除
+            list_del(node);
+            // 重置信息并放回空闲链表
+            info->uva = 0;
+            info->pa = 0;
+            info->pgdir_id = 0;
+            info->on_disk_sec = 0;
+            list_add_tail(node, &free_list);
+            return;
+        }
+        node = node->next;
+    }
+}
+
+// 2. 向换页管理系统注册页面（Unpin）
+// 用于 Pipe Take：页面重新分配给用户进程，接受 Swap 管理
+void register_page_for_process(uintptr_t pa, uintptr_t uva, pid_t pid) {
+    if (list_empty(&free_list)) {
+        // 极端情况：元数据节点不够用，这不应该发生，除非泄露
+        printk("Fatal: No free alloc_info nodes in register!\n");
+        assert(0);
+    }
+    
+    list_node_t *node = free_list.next;
+    list_del(node); // 从 free_list 取出
+    
+    alloc_info_t *info = list_entry(node, alloc_info_t, lnode);
+    info->pa = pa;
+    info->uva = uva;
+    info->pgdir_id = pid;
+    info->on_disk_sec = 0;
+    
+    // 加入内存管理链表
+    list_add_tail(node, &in_mem_list);
+}
 
 // rw 检测缺页命令行
 // exec rw 0x10800000 0x80200000 0xa0000320

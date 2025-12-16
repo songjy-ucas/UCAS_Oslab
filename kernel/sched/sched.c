@@ -1139,78 +1139,73 @@ int do_pipe_open(const char *name) {
 // Sender: 剥离物理页 -> 存入管道 -> 解除映射
 long do_pipe_give_pages(int pipe_idx, void *src, size_t length) {
     if (pipe_idx < 0 || pipe_idx >= MAX_PIPES || !pipes[pipe_idx].valid) return -1;
-    
-    // 必须按页对齐
-    if ((uintptr_t)src % NORMAL_PAGE_SIZE != 0 || length % NORMAL_PAGE_SIZE != 0) {
-        return -1; 
-    }
+    if ((uintptr_t)src % NORMAL_PAGE_SIZE != 0 || length % NORMAL_PAGE_SIZE != 0) return -1;
 
     pipe_t *p = &pipes[pipe_idx];
     uintptr_t current_va = (uintptr_t)src;
     uintptr_t end_va = current_va + length;
     long pages_transferred = 0;
 
-    // 逐页处理
     while (current_va < end_va) {
-        // 1. 获取 PTE
-        PTE *pte = (PTE *)get_pte_of_user_addr(current_va, current_running->pgdir,0); // Sender 不需要分配新页表
+        // 1. 确保页面在内存中
+        if (!check_and_swap_in(current_va)) return -1;
 
-        // 2. 检查页面状态 (Task 3 联动关键点)
-        if (!pte || !(*pte & _PAGE_PRESENT)) {
-            // Case A: 页面在 Swap 分区中 (根据你的 Task 3 实现，通常检查 _PAGE_SWAP 位)
-            if (pte && (*pte & _PAGE_SWAP)) { // 假设你在 pgtable.h 定义了 _PAGE_SWAP
-                // 必须先换入！Pipe 传递的是物理内存页号，磁盘上的页号对方无法直接用。
-                // 这里的 swap_in_page 是你 Task 3 实现的函数，用于将数据从 SD 卡读回内存
-                // swap_in_page(current_va); 
-                
-                // 为了演示，如果没实现 swap_in_page，简单的 trick 是读一下这个地址
-                // 触发缺页异常让内核自动换入。但这里是 syscall 上下文，直接读比较危险。
-                // 建议显式调用你的 swap 模块接口。
-            } else {
-                // Case B: 页面根本不存在 (用户传了个野指针)，出错返回
-                return -1; 
-            }
-        }
+        PTE *pte = (PTE *)get_pte_of_user_addr(current_va, current_running->pgdir, 0);
+        if (!pte || !(*pte & _PAGE_PRESENT)) return -1;
         
-        // 再次获取 PTE 确保已在内存 (如果刚才发生了 swap in)
-        pte = (PTE *)get_pte_of_user_addr(current_va, current_running->pgdir,0);
         uint64_t ppn = get_pfn(*pte);
+        uintptr_t pa = kva2pa(pa2kva(ppn << NORMAL_PAGE_SHIFT));
 
-        // 3. 等待管道有空位
         spin_lock_acquire(&p->lock);
+        
+        // 等待空间
         while (p->count >= PIPE_BUFFER_SIZE) {
             do_block(&current_running->list, &p->send_wait_queue);
             spin_lock_release(&p->lock);
             do_scheduler();
             spin_lock_acquire(&p->lock);
             
-            if (!p->valid) { // 管道被意外关闭
+            if (!p->valid) {
                 spin_lock_release(&p->lock);
                 return -1;
             }
+            // 睡眠醒来，必须重新检查 Swap！页面可能被换出了
+            if (p->count >= PIPE_BUFFER_SIZE) {
+                 spin_lock_release(&p->lock);
+                 if (!check_and_swap_in(current_va)) return -1;
+                 
+                 // 重新获取物理地址（可能变了）
+                 pte = (PTE *)get_pte_of_user_addr(current_va, current_running->pgdir, 0);
+                 ppn = get_pfn(*pte);
+                 pa = kva2pa(pa2kva(ppn << NORMAL_PAGE_SHIFT));
+                 
+                 spin_lock_acquire(&p->lock);
+            }
         }
 
-        // 4. 将 PPN 放入管道
+        // 2. [关键修复] Pin 住页面：从 Swap 链表中移除
+        // 这样 Swap 算法就绝对不会选中这个页面进行换出了
+        verify_ptr_and_pin_page(pa);
+
+        // 3. 放入 Pipe
         p->page_buffer[p->head] = ppn;
         p->head = (p->head + 1) % PIPE_BUFFER_SIZE;
         p->count++;
+        
+        // 4. Sender 丧失所有权 (Unmap)
+        *pte = 0; 
+        local_flush_tlb_page(current_va); 
 
-        // 5. 唤醒接收者
+        // 唤醒接收者
         while (!list_empty(&p->recv_wait_queue)) {
             do_unblock(p->recv_wait_queue.next);
         }
         spin_lock_release(&p->lock);
 
-        // 6. 关键：Sender 丧失所有权 (Unmap)
-        *pte = 0; // 清空 PTE
-        // 必须刷新 TLB，否则 Sender 还能通过快表访问该物理页
-        local_flush_tlb_page(current_va); 
-
         current_va += NORMAL_PAGE_SIZE;
-        pages_transferred++;
+        pages_transferred += NORMAL_PAGE_SIZE;
     }
-
-    return length;
+    return pages_transferred;
 }
 
 // Receiver: 获取物理页 -> 建立映射
@@ -1221,11 +1216,11 @@ long do_pipe_take_pages(int pipe_idx, void *dst, size_t length) {
     pipe_t *p = &pipes[pipe_idx];
     uintptr_t current_va = (uintptr_t)dst;
     uintptr_t end_va = current_va + length;
+    long pages_transferred = 0;
 
     while (current_va < end_va) {
         uint64_t ppn = 0;
 
-        // 1. 等待管道有数据
         spin_lock_acquire(&p->lock);
         while (p->count <= 0) {
             do_block(&current_running->list, &p->recv_wait_queue);
@@ -1239,38 +1234,43 @@ long do_pipe_take_pages(int pipe_idx, void *dst, size_t length) {
             }
         }
 
-        // 2. 取出 PPN
+        // 取出 PPN
         ppn = p->page_buffer[p->tail];
         p->tail = (p->tail + 1) % PIPE_BUFFER_SIZE;
         p->count--;
 
-        // 3. 唤醒发送者
         while (!list_empty(&p->send_wait_queue)) {
             do_unblock(p->send_wait_queue.next);
         }
         spin_lock_release(&p->lock);
 
-        // 4. 建立映射 (Remap)
-        // alloc=1: 如果 dst 对应的中间页表不存在，需要分配
-        PTE *pte = (PTE *)get_pte_of_user_addr(current_va, current_running->pgdir,1);
+        // [Receiver 建立映射]
+        PTE *pte = (PTE *)get_pte_of_user_addr(current_va, current_running->pgdir, 1);
         
-        // 内存泄漏保护：如果 dst 原本就已经映射了物理页，必须先释放旧页！
+        // 1. [关键修复] 清理旧页面
         if (*pte & _PAGE_PRESENT) {
-            // Task 2 应该实现了 free_page 或类似功能
-            // free_page_helper(get_pfn(*pte)); 
-        }
-
-        // 5. 写入 PTE
-        // 注意：权限需要设置为 User 可访问，且通常为可读可写
+            uint64_t old_ppn = get_pfn(*pte);
+            uintptr_t old_pa = kva2pa(pa2kva(old_ppn << NORMAL_PAGE_SHIFT));
+            
+            // 释放物理内存
+            freePage(pa2kva(old_pa));
+            // 释放元数据 (防止 stale node 留在 in_mem_list 中导致 crash)
+            verify_ptr_and_pin_page(old_pa);
+        } 
+        
+        // 2. 写入新 PTE
         set_pfn(pte, ppn);
         set_attribute(pte, _PAGE_PRESENT | _PAGE_USER | _PAGE_READ | _PAGE_WRITE | 
-                           _PAGE_ACCESSED | _PAGE_DIRTY);
+                           _PAGE_EXEC | _PAGE_ACCESSED | _PAGE_DIRTY);
 
-        // 6. 刷新 TLB
+        // 3. [关键修复] 注册新页面 (Unpin)
+        // 现在页面属于当前进程，允许被 Swap
+        uintptr_t new_pa = kva2pa(pa2kva(ppn << NORMAL_PAGE_SHIFT));
+        register_page_for_process(new_pa, current_va, current_running->pid);
+
         local_flush_tlb_page(current_va);
-
         current_va += NORMAL_PAGE_SIZE;
+        pages_transferred += NORMAL_PAGE_SIZE;
     }
-
-    return length;
+    return pages_transferred;
 }

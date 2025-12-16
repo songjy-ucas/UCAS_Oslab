@@ -100,5 +100,8 @@ size_t do_get_free_memory();
 // [P4-Task5] 
 uintptr_t get_pte_of_user_addr(uintptr_t va, uintptr_t pgdir, int alloc);
 int check_and_swap_in(uintptr_t va);
+void update_page_mapping_info(uintptr_t pa, pid_t new_pid, uintptr_t new_uva);
+void verify_ptr_and_pin_page(uintptr_t pa);
+void register_page_for_process(uintptr_t pa, uintptr_t uva, pid_t pid);
 #endif /* MM_H */
 

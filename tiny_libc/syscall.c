@@ -322,6 +322,7 @@ size_t sys_get_free_memory(){
 int sys_net_send(void *txpacket, int length)
 {
     /* TODO: [p5-task1] call invoke_syscall to implement sys_net_send */
+    invoke_syscall(SYSCALL_NET_SEND, (long)txpacket, (long)length, 0, 0, 0);
     return 0;
 }
 

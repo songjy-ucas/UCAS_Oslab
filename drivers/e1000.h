@@ -28,102 +28,120 @@
  * Structures, enums, and macros for the MAC
  */
 
+/* e1000_hw.h
+ * MAC 层的结构体、枚举和宏定义
+ */
+
 #ifndef _E1000_HW_H_
 #define _E1000_HW_H_
 
 #include <type.h>
 #include <io.h>
 
-/* NIC specific static variables go here */
-#define TXDESCS 64          // Number of tx descriptors
-#define RXDESCS 64          // Number of rx descriptors
-#define TX_PKT_SIZE 2048
-#define RX_PKT_SIZE 2048
+/* 网卡特定的静态变量 */
+#define TXDESCS 64          // 发送描述符的数量（环形队列大小）
+#define RXDESCS 64          // 接收描述符的数量
+#define TX_PKT_SIZE 2048    // 单个发送数据包缓冲区的最大大小
+#define RX_PKT_SIZE 2048    // 单个接收数据包缓冲区的最大大小
 
-/* E1000 I/O wrapper functions */
+/* E1000 I/O 包装函数 (内联函数，用于读写 MMIO 寄存器) */
+
+// 写 32 位寄存器
 static inline void
 e1000_write_reg(volatile void *addr, uint32_t reg, uint32_t val)
 {
     writel(val, (uint8_t *)addr + reg);
 }
 
+// 读 32 位寄存器
 static inline uint32_t
 e1000_read_reg(volatile void *addr, uint32_t reg)
 {
     return readl((uint8_t *)addr + reg);
 }
 
+// 写寄存器数组中的某一项 (如 MTA, RAL 等数组型寄存器)
 static inline void
 e1000_write_reg_array(volatile void *addr, uint32_t reg, uint32_t offset, uint32_t val)
 {
-    writel(val, (uint8_t *)addr + reg + (offset << 2));
+    writel(val, (uint8_t *)addr + reg + (offset << 2)); // offset << 2 相当于乘以 4 (字节对齐)
 }
 
+// 读寄存器数组中的某一项
 static inline uint32_t
 e1000_read_reg_array(volatile void *addr, uint32_t reg, uint32_t offset)
 {
     return readl((uint8_t *)addr + reg + (offset << 2));
 }
 
-/* Receive Descriptor */
+/* 接收描述符 (Receive Descriptor) 结构
+ * 硬件 DMA 会将收到的包信息填入这里
+ */
 struct e1000_rx_desc {
-	uint64_t addr;	    /* Address of the descriptor's data buffer */
-	uint16_t length;	/* Length of data DMAed into data buffer */
-	uint16_t csum;		/* Packet checksum */
-	uint8_t  status;	/* Descriptor status */
-	uint8_t  errors;	/* Descriptor Errors */
-	uint16_t special;
+	uint64_t addr;	    /* 数据缓冲区的物理地址 (由软件填入) */
+	uint16_t length;	/* DMA 实际写入缓冲区的数据长度 (由硬件填入) */
+	uint16_t csum;		/* 数据包校验和 (硬件计算) */
+	uint8_t  status;	/* 描述符状态 (如是否完成 DD, 是否包结束 EOP) */
+	uint8_t  errors;	/* 描述符错误指示 */
+	uint16_t special;   /* 特殊字段 (如 VLAN) */
 }__attribute__((packed));
 
-/* Receive Decriptor bit definitions */
-#define E1000_RXD_STAT_DD	    0x01	/* Descriptor Done */
-#define E1000_RXD_STAT_EOP	    0x02	/* End of Packet */
-#define E1000_RXD_STAT_IXSM	    0x04	/* Ignore checksum */
-#define E1000_RXD_STAT_VP	    0x08	/* IEEE VLAN Packet */
-#define E1000_RXD_STAT_TCPCS	0x20	/* TCP xsum calculated */
-#define E1000_RXD_STAT_IPCS	    0x40	/* IP xsum calculated */
-#define E1000_RXD_STAT_PIF	    0x80	/* passed in-exact filter */
-#define E1000_RXD_ERR_CE	    0x01	/* CRC Error */
-#define E1000_RXD_ERR_SE	    0x02	/* Symbol Error */
-#define E1000_RXD_ERR_SEQ	    0x04	/* Sequence Error */
+/* 接收描述符位定义 (Receive Descriptor bit definitions) */
+#define E1000_RXD_STAT_DD	    0x01	/* Descriptor Done: 硬件已完成处理 */
+#define E1000_RXD_STAT_EOP	    0x02	/* End of Packet: 包的最后一个分片 */
+#define E1000_RXD_STAT_IXSM	    0x04	/* Ignore checksum: 忽略校验和 */
+#define E1000_RXD_STAT_VP	    0x08	/* IEEE VLAN Packet: 这是一个 VLAN 包 */
+#define E1000_RXD_STAT_TCPCS	0x20	/* TCP xsum calculated: TCP 校验和已计算 */
+#define E1000_RXD_STAT_IPCS	    0x40	/* IP xsum calculated: IP 校验和已计算 */
+#define E1000_RXD_STAT_PIF	    0x80	/* passed in-exact filter: 通过非精确过滤 */
+#define E1000_RXD_ERR_CE	    0x01	/* CRC Error: CRC 校验错误 */
+#define E1000_RXD_ERR_SE	    0x02	/* Symbol Error: 符号错误 */
+#define E1000_RXD_ERR_SEQ	    0x04	/* Sequence Error: 序列错误 */
 #define E1000_RXD_ERR_CXE	    0x10	/* Carrier Extension Error */
 #define E1000_RXD_ERR_TCPE	    0x20	/* TCP/UDP Checksum Error */
 #define E1000_RXD_ERR_IPE	    0x40	/* IP Checksum Error */
 #define E1000_RXD_ERR_RXE	    0x80	/* Rx Data Error */
-#define E1000_RXD_SPC_VLAN_MASK 0x0FFF	/* VLAN ID is in lower 12 bits */
-#define E1000_RXD_SPC_PRI_MASK	0xE000	/* Priority is in upper 3 bits */
-#define E1000_RXD_SPC_PRI_SHIFT 0x000D	/* Priority is in upper 3 of 16 */
-#define E1000_RXD_SPC_CFI_MASK	0x1000	/* CFI is bit 12 */
-#define E1000_RXD_SPC_CFI_SHIFT 0x000C	/* CFI is bit 12 */
+#define E1000_RXD_SPC_VLAN_MASK 0x0FFF	/* VLAN ID 位于低 12 位 */
+#define E1000_RXD_SPC_PRI_MASK	0xE000	/* Priority 位于高 3 位 */
+#define E1000_RXD_SPC_PRI_SHIFT 0x000D	/* Priority 位移 */
+#define E1000_RXD_SPC_CFI_MASK	0x1000	/* CFI 是第 12 位 */
+#define E1000_RXD_SPC_CFI_SHIFT 0x000C	/* CFI 位移 */
 
-/* Transmit Descriptor */
+/* 发送描述符 (Transmit Descriptor) 结构 (Legacy 格式)
+ * 软件填入信息告诉硬件去哪里搬数据
+ */
 struct e1000_tx_desc {
-	uint64_t addr;	    /* Address of the descriptor's data buffer */
-    uint16_t length;	/* Data buffer length */
-    uint8_t cso;	    /* Checksum offset */
-    uint8_t cmd;	    /* Descriptor control */
-    uint8_t status;	    /* Descriptor status */
-    uint8_t css;	    /* Checksum start */
-    uint16_t special;
+	uint64_t addr;	    /* 数据缓冲区的物理地址 */
+    uint16_t length;	/* 数据缓冲区长度 */
+    uint8_t cso;	    /* Checksum offset: 校验和偏移 */
+    uint8_t cmd;	    /* Descriptor control: 命令字段 (如 EOP, RS) */
+    uint8_t status;	    /* Descriptor status: 状态字段 (硬件回写 DD) */
+    uint8_t css;	    /* Checksum start: 校验和开始位置 */
+    uint16_t special;   /* 特殊字段 */
 }__attribute__((packed));
 
-/* Transmit Descriptor bit definitions */
-#define E1000_TXD_DTYP_D     0x00100000	/* Data Descriptor */
-#define E1000_TXD_DTYP_C     0x00000000	/* Context Descriptor */
-#define E1000_TXD_POPTS_IXSM 0x01	    /* Insert IP checksum */
+/* 发送描述符位定义 (Transmit Descriptor bit definitions) */
+#define E1000_TXD_DTYP_D     0x00100000	/* Data Descriptor: 数据描述符 */
+#define E1000_TXD_DTYP_C     0x00000000	/* Context Descriptor: 上下文描述符 */
+#define E1000_TXD_POPTS_IXSM 0x01	    /* Insert IP checksum: 插入 IP 校验和 */
 #define E1000_TXD_POPTS_TXSM 0x02	    /* Insert TCP/UDP checksum */
-#define E1000_TXD_CMD_EOP    0x00000001	/* End of Packet */
-#define E1000_TXD_CMD_IFCS   0x00000002	/* Insert FCS (Ethernet CRC) */
-#define E1000_TXD_CMD_IC     0x00000004	/* Insert Checksum */
-#define E1000_TXD_CMD_RS     0x00000008	/* Report Status */
+#define E1000_TXD_CMD_EOP    0x00000001	/* End of Packet: 包结束标志 */
+#define E1000_TXD_CMD_IFCS   0x00000002	/* Insert FCS (Ethernet CRC): 插入帧校验序列 */
+#define E1000_TXD_CMD_IC     0x00000004	/* Insert Checksum: 插入校验和 */
+#define E1000_TXD_CMD_RS     0x00000008	/* Report Status: 完成后报告状态 (回写 STA) */
 #define E1000_TXD_CMD_RPS    0x00000010	/* Report Packet Sent */
-#define E1000_TXD_CMD_DEXT   0x00000020	/* Descriptor extension (0 = legacy) */
+#define E1000_TXD_CMD_DEXT   0x00000020	/* Descriptor extension (0 = legacy 格式) */
 #define E1000_TXD_CMD_VLE    0x00000040	/* Add VLAN tag */
 #define E1000_TXD_CMD_IDE    0x00000080	/* Enable Tidv register */
-#define E1000_TXD_STAT_DD    0x00000001	/* Descriptor Done */
-#define E1000_TXD_STAT_EC    0x00000002	/* Excess Collisions */
-#define E1000_TXD_STAT_LC    0x00000004	/* Late Collisions */
-#define E1000_TXD_STAT_TU    0x00000008	/* Transmit underrun */
+#define E1000_TXD_STAT_DD    0x00000001	/* Descriptor Done: 发送完成 */
+#define E1000_TXD_STAT_EC    0x00000002	/* Excess Collisions: 过多冲突 */
+#define E1000_TXD_STAT_LC    0x00000004	/* Late Collisions: 晚期冲突 */
+#define E1000_TXD_STAT_TU    0x00000008	/* Transmit underrun: 发送下溢 */
+
+/* 寄存器集合 (Register Set) (适用于 82543, 82544)
+ * 定义了寄存器相对于基地址的偏移量
+ * RW - 读写, RO - 只读, WO - 只写, R/clr - 读后清零
+ */
 
 /* Register Set. (82543, 82544)
  *
@@ -432,12 +450,12 @@ struct e1000_tx_desc {
 #define DEFAULT_80003ES2LAN_TIPG_IPGR2 7
 #define E1000_TIPG_IPGR2_SHIFT	20
 
-/* E1000 Base Address Pointer */
+/* E1000 基地址指针 (全局变量，需要在驱动初始化时 ioremap) */
 extern volatile uint8_t *e1000;
 
-/* E1000 Function Definitions */
-void e1000_init(void);
-int e1000_transmit(void *txpacket, int length);
-int e1000_poll(void *rxbuffer);
+/* E1000 驱动函数声明 */
+void e1000_init(void);                              // 初始化网卡
+int e1000_transmit(void *txpacket, int length);     // 发送数据包
+int e1000_poll(void *rxbuffer);                     // 接收数据包 (轮询)
 
 #endif  // !_E1000_HW_H_

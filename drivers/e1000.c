@@ -52,15 +52,43 @@ static void e1000_reset(void)
 /**
  * e1000_configure_tx - Configure 8254x Transmit Unit after Reset
  **/
-static void e1000_configure_tx(void)
+static void e1000_configure_tx(void)    // 该函数用于 E1000 发送初始化
 {
     /* TODO: [p5-task1] Initialize tx descriptors */
+    // 1. 清零所有发送描述符
+    for (int i = 0; i < TXDESCS; i++) {
+        bzero(&tx_desc_array[i], sizeof(struct e1000_tx_desc));
+        // 这里不需要预先填 Buffer Address，发送时动态填入即可
+    }
 
     /* TODO: [p5-task1] Set up the Tx descriptor base address and length */
+    // 2. 将描述符数组的【物理地址】写入 TDBAL 和 TDBAH
+    // 注意：必须使用 kva2pa 将内核虚地址转换为物理地址
+    uint64_t tx_desc_pa = kva2pa((uintptr_t)tx_desc_array);
+    e1000_write_reg(e1000, E1000_TDBAL, (uint32_t)(tx_desc_pa & 0xffffffff));
+    e1000_write_reg(e1000, E1000_TDBAH, (uint32_t)(tx_desc_pa >> 32));
+
+    // 3. 设置数组长度 (字节数 = 描述符个数 * 16)
+    e1000_write_reg(e1000, E1000_TDLEN, TXDESCS * sizeof(struct e1000_tx_desc));
 
 	/* TODO: [p5-task1] Set up the HW Tx Head and Tail descriptor pointers */
+    // 4. 初始化 Head 和 Tail 指针为 0
+    e1000_write_reg(e1000, E1000_TDH, 0);
+    e1000_write_reg(e1000, E1000_TDT, 0);
 
     /* TODO: [p5-task1] Program the Transmit Control Register */
+    // 5. 设置 TCTL 寄存器
+    // EN: Enable (bit 1)
+    // PSP: Pad Short Packets (bit 3)
+    // CT: Collision Threshold (bit 4-11), set to 0x10 (16)
+    // COLD: Collision Distance (bit 12-21), set to 0x40 (64)
+    uint32_t tctl = 0;
+    tctl |= E1000_TCTL_EN;      // 使能发送
+    tctl |= E1000_TCTL_PSP;     // 填充短包
+    tctl |= (0x10 << 4);        // CT = 0x10
+    tctl |= (0x40 << 12);       // COLD = 0x40
+    
+    e1000_write_reg(e1000, E1000_TCTL, tctl);
 }
 
 /**
@@ -102,11 +130,54 @@ void e1000_init(void)
  * @param length - Length of this packet
  * @return - Number of bytes that are transmitted successfully
  **/
-int e1000_transmit(void *txpacket, int length)
+int e1000_transmit(void *txpacket, int length) // 该函数用于数据帧的发送
 {
     /* TODO: [p5-task1] Transmit one packet from txpacket */
+    
+    // 1. 获取当前 Tail 指针位置 (软件写入的位置)
+    uint32_t tx_tail = e1000_read_reg(e1000, E1000_TDT);
+    
+    // 2. 获取当前 Head 指针位置 (硬件处理到的位置)
+    uint32_t tx_head = e1000_read_reg(e1000, E1000_TDH);
 
-    return 0;
+    // 3. 检查队列是否已满
+    // 满的条件：(Tail + 1) % Size == Head (保留一个空位)
+    uint32_t next_tail = (tx_tail + 1) % TXDESCS;
+    
+    // 对于 Task 1，如果满了，我们需要轮询等待（Busy Wait），直到硬件腾出空间
+    while (next_tail == tx_head) {
+        // 重新读取 Head，看硬件有没有往前走
+        tx_head = e1000_read_reg(e1000, E1000_TDH);
+        // 可以插入 yield 让出 CPU，防止死锁，但 Task 1 要求轮询
+        // sys_yield(); 
+    }
+
+    // 4. 将用户数据拷贝到内核的专用发送缓冲区
+    // 为什么要拷贝？因为 txpacket 可能是用户态地址，或者如果不拷贝直接DMA，
+    // 用户可能会在DMA完成前修改数据。使用内核 buffer 更安全。
+    // tx_pkt_buffer 也是静态分配的，kva2pa 转换很方便。
+    if (length > TX_PKT_SIZE) length = TX_PKT_SIZE; // 截断防止溢出
+    memcpy(tx_pkt_buffer[tx_tail], txpacket, length);
+
+    // 5. 填写描述符
+    // Buffer Address: 必须是【物理地址】
+    tx_desc_array[tx_tail].addr = kva2pa((uintptr_t)tx_pkt_buffer[tx_tail]);
+    // Length: 数据长度
+    tx_desc_array[tx_tail].length = (uint16_t)length;
+    // CMD: EOP (包结束) | RS (报告状态，让硬件处理完后写回 DD 位)
+    tx_desc_array[tx_tail].cmd = E1000_TXD_CMD_EOP | E1000_TXD_CMD_RS;
+    // Status: 清零，以便我们(可选地)后续检查 DD 位
+    tx_desc_array[tx_tail].status = 0;
+
+    // 6. 内存屏障 / 刷 Cache
+    // 确保上面的描述符写操作真正进入内存，在通知 DMA 之前
+    local_flush_dcache();
+
+    // 7. 更新 Tail 指针，通知硬件开始发送
+    e1000_write_reg(e1000, E1000_TDT, next_tail);
+
+    // 成功发送
+    return length;
 }
 
 /**

@@ -11,6 +11,10 @@ static LIST_HEAD(recv_block_queue);
 int do_net_send(void *txpacket, int length)
 {
     // TODO: [p5-task1] Transmit one network packet via e1000 device
+    // 直接调用 e1000 发送函数
+    // e1000_transmit 内部处理了判满阻塞（轮询）和地址转换
+    return e1000_transmit(txpacket, length);
+        
     // TODO: [p5-task3] Call do_block when e1000 transmit queue is full
     // TODO: [p5-task4] Enable TXQE interrupt if transmit queue is full
 

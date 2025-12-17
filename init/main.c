@@ -18,6 +18,10 @@
 #include <assert.h>
 #include <type.h>
 #include <csr.h>
+#include <os/ioremap.h>
+#include <os/net.h>
+#include <e1000.h>
+#include <plic.h>
 
 extern void ret_from_exception();
 extern long (*syscall[])();
@@ -278,7 +282,10 @@ static void init_syscall(void)
     syscall[SYSCALL_PIPE_GIVE] = (long (*)())do_pipe_give_pages;  // 对应 give (detach)
     
     // P4 Task4 新增
-    syscall[SYSCALL_FREE_MEM] = (long (*)())do_get_free_memory;  
+    syscall[SYSCALL_FREE_MEM] = (long (*)())do_get_free_memory;
+    
+    // P5 新增
+    syscall[SYSCALL_NET_SEND] = (long (*)())do_net_send;
 }
 
 /* [P4-Task1] 新增: 取消临时映射的辅助函数 */
@@ -358,6 +365,17 @@ int main(/*int argc, char *argv[]*/)
         asm volatile("mv tp, %0" : : "r" (current_running));
         
         time_base = bios_read_fdt(TIMEBASE);
+
+        e1000 = (volatile uint8_t *)bios_read_fdt(ETHERNET_ADDR);
+        uint64_t plic_addr = bios_read_fdt(PLIC_ADDR);
+        uint32_t nr_irqs = (uint32_t)bios_read_fdt(NR_IRQS);
+        printk("> [INIT] e1000: %lx, plic_addr: %lx, nr_irqs: %lx.\n", e1000, plic_addr, nr_irqs);
+
+        // IOremap
+        plic_addr = (uintptr_t)ioremap((uint64_t)plic_addr, 0x4000 * NORMAL_PAGE_SIZE);
+        e1000 = (uint8_t *)ioremap((uint64_t)e1000, 8 * NORMAL_PAGE_SIZE);
+        
+        printk("> [INIT] IOremap initialization succeeded.\n");
         init_locks();
         init_barriers();   
         init_conditions();
@@ -375,6 +393,10 @@ int main(/*int argc, char *argv[]*/)
         init_screen();
         printk("> [INIT] SCREEN initialization succeeded.\n");
         
+        // Init network device(-_-)
+        e1000_init();
+        printk("> [INIT] E1000 device initialized successfully.\n");
+
         printk("> [INIT] CPU #%u has entered kernel with VM!\n",
             (unsigned int)get_current_cpu_id());
        

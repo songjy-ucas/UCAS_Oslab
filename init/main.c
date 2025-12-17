@@ -286,6 +286,7 @@ static void init_syscall(void)
     
     // P5 新增
     syscall[SYSCALL_NET_SEND] = (long (*)())do_net_send;
+    syscall[SYSCALL_NET_RECV] = (long (*)())do_net_recv;
 }
 
 /* [P4-Task1] 新增: 取消临时映射的辅助函数 */

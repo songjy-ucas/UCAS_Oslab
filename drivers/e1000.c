@@ -96,17 +96,63 @@ static void e1000_configure_tx(void)    // 该函数用于 E1000 发送初始化
  **/
 static void e1000_configure_rx(void)
 {
-    /* TODO: [p5-task2] Set e1000 MAC Address to RAR[0] */
+   /* TODO: [p5-task2] Set e1000 MAC Address to RAR[0] */
+    // 1. 设置 MAC 地址 (Receive Address Register)
+    // RAR[0] 由两个寄存器组成：RAL0 (低32位) 和 RAH0 (高16位 + 有效位)
+    // MAC 地址是 {00, 0a, 35, 00, 1e, 53}
+    // RAL0 存放：00:0a:35:00 (注意大小端，通常是低位在前)
+    // RAH0 存放：1e:53 并置位 AV (Address Valid)
+    
+    // 组合 RAL0: 0x00350a00 (取决于 enetaddr 定义顺序，这里按字节序拼装)
+    uint32_t ral = (enetaddr[3] << 24) | (enetaddr[2] << 16) | (enetaddr[1] << 8) | enetaddr[0];
+    // 组合 RAH0: AV bit (31) | 0x531e
+    uint32_t rah = E1000_RAH_AV | (enetaddr[5] << 8) | enetaddr[4];
+    
+    e1000_write_reg_array(e1000, E1000_RA, 0, ral);
+    e1000_write_reg_array(e1000, E1000_RA, 1, rah);
 
     /* TODO: [p5-task2] Initialize rx descriptors */
+    // 2. 初始化接收描述符
+    // 我们需要把所有的接收 Buffer 的物理地址填给硬件，这样硬件一收到包就有地方放
+    for (int i = 0; i < RXDESCS; i++) {
+        bzero(&rx_desc_array[i], sizeof(struct e1000_rx_desc));
+        // 关键：预先填入 buffer 的物理地址
+        rx_desc_array[i].addr = kva2pa((uintptr_t)rx_pkt_buffer[i]);
+        // 状态清零，之后如果 status 变了说明收到包了
+        rx_desc_array[i].status = 0;
+    }
 
     /* TODO: [p5-task2] Set up the Rx descriptor base address and length */
+    // 3. 告诉硬件接收描述符环形队列在哪
+    uint64_t rx_desc_pa = kva2pa((uintptr_t)rx_desc_array);
+    e1000_write_reg(e1000, E1000_RDBAL, (uint32_t)(rx_desc_pa & 0xFFFFFFFF));
+    e1000_write_reg(e1000, E1000_RDBAH, (uint32_t)(rx_desc_pa >> 32));
+    e1000_write_reg(e1000, E1000_RDLEN, RXDESCS * sizeof(struct e1000_rx_desc));
 
     /* TODO: [p5-task2] Set up the HW Rx Head and Tail descriptor pointers */
+    // 4. 初始化头尾指针
+    // RDH (Head): 硬件当前处理到的位置，初始为 0
+    e1000_write_reg(e1000, E1000_RDH, 0);
+    
+    // RDT (Tail): 软件告诉硬件“可以用到哪里”。
+    // 初始状态下，所有描述符都是空的，都归硬件管。
+    // 按照“Head 到 Tail 之间（不含 Tail）是硬件可用区”的规则，
+    // 我们把 Tail 指向最后一个描述符，这样 0 到 RXDESCS-1 都是硬件可用的。
+    e1000_write_reg(e1000, E1000_RDT, RXDESCS - 1);
 
     /* TODO: [p5-task2] Program the Receive Control Register */
+    // 5. 设置 RCTL 寄存器
+    // EN: Enable (开启接收)
+    // BAM: Broadcast Accept Mode (接收广播包)
+    // BSEX = 0, BSIZE = 0: 设置接收缓冲区大小为 2048 字节 (默认)
+    uint32_t rctl = E1000_RCTL_EN | E1000_RCTL_BAM;
+    e1000_write_reg(e1000, E1000_RCTL, rctl);
 
     /* TODO: [p5-task4] Enable RXDMT0 Interrupt */
+    // Task 2 不需要中断，暂时留空
+    
+    // 刷 Cache 确保配置生效
+    local_flush_dcache();
 }
 
 /**
@@ -188,6 +234,45 @@ int e1000_transmit(void *txpacket, int length) // 该函数用于数据帧的发
 int e1000_poll(void *rxbuffer)
 {
     /* TODO: [p5-task2] Receive one packet and put it into rxbuffer */
+    
+    // 1. 获取当前 RDT (Tail) 指针的位置
+    // RDT 指向的是“最后一个空闲描述符”。
+    // 那么 (RDT + 1) 就是“硬件应该存放下一个数据包的位置”。
+    uint32_t tail = e1000_read_reg(e1000, E1000_RDT);
+    uint32_t next_check = (tail + 1) % RXDESCS;
 
-    return 0;
+    // 2. 读取描述符状态前，先刷 Cache，防止读到旧数据
+    local_flush_dcache();
+
+    // 3. 检查 DD (Descriptor Done) 位
+    // 如果 DD 位是 1，说明硬件已经把包放进来了，并且更新了状态。
+    // 如果 DD 位是 0，说明还没收到包，直接返回。
+    if (!(rx_desc_array[next_check].status & E1000_RXD_STAT_DD)) {
+        return 0; // 没收到包
+    }
+
+    // 4. 收到包,读取数据长度
+    uint16_t length = rx_desc_array[next_check].length;
+
+    // 5. 将数据拷贝给用户 buffer
+    // 注意：如果 rxbuffer 为空，说明用户只想查询是否有包（Peek），不想取走
+    // 但通常这个函数设计为“取走一个包”。
+    if (rxbuffer) {
+        memcpy(rxbuffer, rx_pkt_buffer[next_check], length);
+    }
+
+    // 6. 重置描述符状态
+    // 把 DD 位清零，把状态清空，准备让硬件下次再用这个坑位
+    rx_desc_array[next_check].status = 0;
+    rx_desc_array[next_check].length = 0;
+
+    // 7. 更新 RDT 指针 (归还描述符)
+    // 告诉硬件：“next_check 这个位置我（软件）已经处理完了，数据拿走了，
+    // 现在这个坑位是空的了，交还给你（硬件）继续收新包用。”
+    e1000_write_reg(e1000, E1000_RDT, next_check);
+    
+    // 更新后刷一下 Cache 
+    local_flush_dcache();
+
+    return length;
 }

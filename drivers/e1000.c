@@ -145,7 +145,8 @@ static void e1000_configure_rx(void)
     // EN: Enable (开启接收)
     // BAM: Broadcast Accept Mode (接收广播包)
     // BSEX = 0, BSIZE = 0: 设置接收缓冲区大小为 2048 字节 (默认)
-    uint32_t rctl = E1000_RCTL_EN | E1000_RCTL_BAM;
+    // 【修改点】：添加 E1000_RCTL_RDMTS_HALF，为 Task 3 中断做准备
+    uint32_t rctl = E1000_RCTL_EN | E1000_RCTL_BAM | E1000_RCTL_RDMTS_HALF;
     e1000_write_reg(e1000, E1000_RCTL, rctl);
 
     /* TODO: [p5-task4] Enable RXDMT0 Interrupt */
@@ -190,12 +191,17 @@ int e1000_transmit(void *txpacket, int length) // 该函数用于数据帧的发
     // 满的条件：(Tail + 1) % Size == Head (保留一个空位)
     uint32_t next_tail = (tx_tail + 1) % TXDESCS;
     
-    // 对于 Task 1，如果满了，我们需要轮询等待（Busy Wait），直到硬件腾出空间
-    while (next_tail == tx_head) {
-        // 重新读取 Head，看硬件有没有往前走
-        tx_head = e1000_read_reg(e1000, E1000_TDH);
-        // 可以插入 yield 让出 CPU，防止死锁，但 Task 1 要求轮询
-        // sys_yield(); 
+    // // 对于 Task 1，如果满了，我们需要轮询等待（Busy Wait），直到硬件腾出空间
+    // while (next_tail == tx_head) {
+    //     // 重新读取 Head，看硬件有没有往前走
+    //     tx_head = e1000_read_reg(e1000, E1000_TDH);
+    //     // 可以插入 yield 让出 CPU，防止死锁，但 Task 1 要求轮询
+    //     // sys_yield(); 
+    // }
+
+    // 【修改点】：移除死循环，如果满了直接返回 0
+    if (next_tail == tx_head) {
+        return 0; 
     }
 
     // 4. 将用户数据拷贝到内核的专用发送缓冲区

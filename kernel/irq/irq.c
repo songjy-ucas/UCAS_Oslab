@@ -10,6 +10,8 @@
 #include <os/debug.h>
 #include <asm/unistd.h>
 #include <csr.h>
+#include <plic.h>
+#include <os/net.h>
 
 #define SCAUSE_IRQ_MASK 0x8000000000000000
 handler_t irq_table[IRQC_COUNT];
@@ -22,8 +24,8 @@ void interrupt_helper(regs_context_t *regs, uint64_t stval, uint64_t scause)
     uint64_t exc_code = scause & (~SCAUSE_IRQ_FLAG);
     if (scause & SCAUSE_IRQ_MASK) {
         // It's an interrupt
-        irq_table[scause & ~SCAUSE_IRQ_MASK](regs, stval, scause);
         klog("IRQ received, code: %d\n", exc_code); // Log the IRQ code
+        irq_table[scause & ~SCAUSE_IRQ_MASK](regs, stval, scause);        
     } else {
         // It's an exception
         klog("Exception received, code: %d\n", exc_code); // Log the Exception code
@@ -36,7 +38,7 @@ void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
     // TODO: [p2-task4] clock interrupt handler.
     // Note: use bios_set_timer to reset the timer and remember to reschedule
     bios_set_timer(get_ticks()+TIMER_INTERVAL); //下一次查询中断的时间
-    printl("%d",current_running->pid);
+    klog("PID %d do time irq schedluer\n",current_running->pid);
     do_scheduler();
 }
 
@@ -82,8 +84,32 @@ void handle_page_fault(regs_context_t *regs, uint64_t stval, uint64_t scause)
 
 void handle_irq_ext(regs_context_t *regs, uint64_t stval, uint64_t scause)
 {
-    // TODO: [p5-task4] external interrupt handler.
+    // TODO: [p5-task3] external interrupt handler.
     // Note: plic_claim and plic_complete will be helpful ...
+    // Note: plic_claim and plic_complete will be helpful ...
+    
+    // 1. 获取当前发生中断的外设 ID
+    int id = plic_claim();
+    
+    // 2. 判断是否为 E1000 网卡中断
+    // 讲义指出：QEMU 上 ID 为 33，开发板上 ID 为 3
+    // 这两个宏定义通常在 plic.h 中
+    if(id == PLIC_E1000_QEMU_IRQ || id == PLIC_E1000_PYNQ_IRQ)  
+    {
+        // 调试信息，确认进入了网卡中断（调试完成后可注释掉）
+        klog("e1000 interrupt\n\r");
+        
+        // 调用 net.c 中的网卡中断处理逻辑
+        net_handle_irq();
+    }
+    else
+    {
+        // 如果是其他未知设备的中断，当作异常处理或者忽略
+        handle_other(regs, stval, scause);
+    }
+    
+    // 3. 通知 PLIC 中断处理完成，允许该外设再次发送中断
+    plic_complete(id);
 }
 
 void init_exception()
@@ -115,8 +141,12 @@ void init_exception()
     irq_table[IRQC_S_TIMER] = handle_irq_timer;
     irq_table[IRQC_M_TIMER] = handle_other;
     irq_table[IRQC_U_EXT  ] = handle_other;
-    irq_table[IRQC_S_EXT  ] = handle_other;
-    irq_table[IRQC_M_EXT  ] = handle_other;
+    // irq_table[IRQC_S_EXT  ] = handle_other;
+    // irq_table[IRQC_M_EXT  ] = handle_other;
+
+    // [Task 3] 注册 S 态外部中断处理函数
+    irq_table[IRQC_S_EXT  ] = handle_irq_ext;   
+    irq_table[IRQC_M_EXT  ] = handle_irq_ext; // 如果 M 态也可能触发，可以一并注册
     //setup_exception();
 }
 

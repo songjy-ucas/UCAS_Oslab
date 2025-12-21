@@ -393,7 +393,11 @@ int main(/*int argc, char *argv[]*/)
         printk("> [INIT] System call initialized successfully.\n");
         init_screen();
         printk("> [INIT] SCREEN initialization succeeded.\n");
-        
+
+        // TODO: [p5-task4] Init plic
+        plic_init(plic_addr, nr_irqs);
+        printk("> [INIT] PLIC initialized successfully. addr = 0x%lx, nr_irqs=0x%x\n", plic_addr, nr_irqs);
+
         // Init network device(-_-)
         e1000_init();
         printk("> [INIT] E1000 device initialized successfully.\n");

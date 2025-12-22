@@ -212,6 +212,8 @@ ENTRY(ret_from_exception)
   // [P3-TASK3] 离开内核前释放大内核锁
   call unlock_kernel
 
+  call enable_preempt
+
   RESTORE_CONTEXT
 
   sret
@@ -234,6 +236,8 @@ ENTRY(exception_handler_entry)
   
   //call debug_trap_handler
   /* ================== 新增代码结束 ================== */
+
+  call disable_preempt
 
   // [P3-TASK3] 进入内核处理前获取大内核锁
   call lock_kernel

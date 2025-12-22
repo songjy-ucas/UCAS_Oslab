@@ -3,8 +3,17 @@
 #include <os/sched.h>
 #include <os/string.h>
 #include <os/list.h>
+#include <os/lock.h>
 #include <os/smp.h>
 #include <os/irq.h>
+#include <os/debug.h>
+
+static spin_lock_t net_queue_lock;
+
+void init_net_lock(void)
+{
+    spin_lock_init(&net_queue_lock);
+}
 
 static LIST_HEAD(send_block_queue);
 static LIST_HEAD(recv_block_queue);
@@ -49,7 +58,9 @@ int do_net_send(void *txpacket, int length)
         
         // B. 阻塞当前进程
         // 使用你的 do_block 接口：传入当前进程节点和目标队列
+        spin_lock_acquire(&net_queue_lock);
         do_block(&current_running->list, &send_block_queue);
+        spin_lock_release(&net_queue_lock);
         
         // C. 【必须】主动触发调度，让出 CPU
         // 因为你的 do_block 只改状态不调度
@@ -84,7 +95,9 @@ int do_net_recv(void *rxbuffer, int pkt_num, int *pkt_lens)
             local_flush_dcache();
             
             // B. 阻塞当前进程
+            spin_lock_acquire(&net_queue_lock);
             do_block(&current_running->list, &recv_block_queue);
+            spin_lock_release(&net_queue_lock);
             
             // C. 【必须】主动触发调度
             do_scheduler();
@@ -100,7 +113,9 @@ int do_net_recv(void *rxbuffer, int pkt_num, int *pkt_lens)
 static void handle_e1000_txqe(void)
 {
     // 1. 唤醒所有等待发送的进程
+    spin_lock_acquire(&net_queue_lock);
     unblock_queue(&send_block_queue);
+    spin_lock_release(&net_queue_lock);
     
     // 2. 关闭 TXQE 中断 (写入 IMC)
     // 既然进程醒了会去轮询，就不需要中断频繁打扰了
@@ -112,7 +127,9 @@ static void handle_e1000_txqe(void)
 static void handle_e1000_rxdmt0(void)
 {
     // 1. 唤醒所有等待接收的进程
+    spin_lock_acquire(&net_queue_lock);
     unblock_queue(&recv_block_queue);
+    spin_lock_release(&net_queue_lock);
     
     // 2. 关闭 RXDMT0 中断 (写入 IMC)
     e1000_write_reg(e1000, E1000_IMC, E1000_IMC_RXDMT0);
@@ -129,10 +146,12 @@ void net_handle_irq(void)
     // 检查是否是 TXQE
     if (icr & E1000_ICR_TXQE) {
         handle_e1000_txqe();
+        klog("[E1000] Tx Done Interrupt!\n");
     }
     
     // 检查是否是 RXDMT0
     if (icr & E1000_ICR_RXDMT0) {
         handle_e1000_rxdmt0();
+        klog("[E1000] Rx Interrupt!\n");
     }
 }

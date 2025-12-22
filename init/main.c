@@ -360,27 +360,31 @@ int main(/*int argc, char *argv[]*/)
         init_task_info(num_tasks, task_info_start_sector);
         
         // init_pcb 内部现在使用 allocPage
-        init_pcb(); 
         
         // 设置 tp 寄存器指向 Core 0 的 current_running
-        asm volatile("mv tp, %0" : : "r" (current_running));
         
         time_base = bios_read_fdt(TIMEBASE);
 
         e1000 = (volatile uint8_t *)bios_read_fdt(ETHERNET_ADDR);
         uint64_t plic_addr = bios_read_fdt(PLIC_ADDR);
         uint32_t nr_irqs = (uint32_t)bios_read_fdt(NR_IRQS);
-        printk("> [INIT] e1000: %lx, plic_addr: %lx, nr_irqs: %lx.\n", e1000, plic_addr, nr_irqs);
+        // printk("> [INIT] e1000: %lx, plic_addr: %lx, nr_irqs: %lx.\n", e1000, plic_addr, nr_irqs);
 
         // IOremap
         plic_addr = (uintptr_t)ioremap((uint64_t)plic_addr, 0x4000 * NORMAL_PAGE_SIZE);
         e1000 = (uint8_t *)ioremap((uint64_t)e1000, 8 * NORMAL_PAGE_SIZE);
         
-        printk("> [INIT] IOremap initialization succeeded.\n");
+        // printk("> [INIT] IOremap initialization succeeded.\n");
+
+        init_pcb(); 
+        
+        asm volatile("mv tp, %0" : : "r" (current_running));
+
         init_locks();
         init_barriers();   
         init_conditions();
         init_mbox(); 
+        init_net_lock();
 
         printk("> [INIT] PCB initialization succeeded.\n");
         printk("> [INIT] Lock mechanism initialization succeeded.\n");

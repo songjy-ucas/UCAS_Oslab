@@ -128,9 +128,9 @@ int plic_init(uint64_t plic_regs_addr, uint32_t nr_irqs)
 
     handler->present     = true;
     // 设置 S 态 Context 的基地址 (CONTEXT_BASE 对应 Hart 0 S-Mode 的偏移)
-    handler->hart_base   = plic_regs + CONTEXT_BASE;
+    handler->hart_base   = plic_regs + CONTEXT_BASE + CONTEXT_PER_HART;
     // 设置 S 态 Enable 的基地址
-    handler->enable_base = plic_regs + ENABLE_BASE;
+    handler->enable_base = plic_regs + ENABLE_BASE + ENABLE_PER_HART;
 
 done:
     /* 

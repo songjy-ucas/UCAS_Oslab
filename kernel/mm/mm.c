@@ -418,10 +418,9 @@ int map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir){
 // 将虚地址和给定实地址的映射关系存于给定页表(内核)使用2级页表，执行成功返回1，否则返回0 --- 使用大页2MB
 int kernel_map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir){
     va &= VA_MASK;
-    uint64_t vpn2 =
-        va >> (NORMAL_PAGE_SHIFT + PPN_BITS + PPN_BITS);
-    uint64_t vpn1 = (vpn2 << PPN_BITS) ^
-                    (va >> (NORMAL_PAGE_SHIFT + PPN_BITS));
+    uint64_t vpn2 = (va >> 30) & 0x1ff;
+    uint64_t vpn1 = (va >> 21) & 0x1ff;
+
     PTE *pgd = (PTE*)pgdir;
     if (pgd[vpn2] == 0) {
         // 分配一个新的三级页目录，注意需要转化为实地址！
@@ -439,7 +438,7 @@ int kernel_map_page_helper(uintptr_t va, uintptr_t pa, uintptr_t pgdir){
         set_pfn(&pmd[vpn1], pa >> NORMAL_PAGE_SHIFT);
         set_attribute(
             &pmd[vpn1], _PAGE_PRESENT | _PAGE_READ | _PAGE_WRITE |
-                            _PAGE_EXEC | _PAGE_ACCESSED | _PAGE_DIRTY);
+                            _PAGE_EXEC | _PAGE_ACCESSED | _PAGE_DIRTY | _PAGE_GLOBAL);
         return 1;
     }
     return 0;

@@ -39,7 +39,11 @@ void handle_irq_timer(regs_context_t *regs, uint64_t stval, uint64_t scause)
     // Note: use bios_set_timer to reset the timer and remember to reschedule
     bios_set_timer(get_ticks()+TIMER_INTERVAL); //下一次查询中断的时间
     klog("PID %d do time irq schedluer\n",current_running->pid);
-    do_scheduler();
+    if (regs->sstatus & (1L << 8) != 0){
+        ;
+    } else { 
+        do_scheduler();
+    }
 }
 
 // static PTE check_pte_status(uintptr_t va, uintptr_t pgdir) {

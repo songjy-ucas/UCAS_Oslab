@@ -23,9 +23,9 @@ void *ioremap(unsigned long phys_addr, unsigned long size)
     // 2. 循环映射
     while (io_base < va_end) {
         int ret = kernel_map_page_helper(io_base, phys_addr, pa2kva(PGDIR_PA));
-        printk("Mapping VA=%lx to PA=%lx, ret=%d\n", io_base, phys_addr, ret);
+        // printk("Mapping VA=%lx to PA=%lx, ret=%d\n", io_base, phys_addr, ret);
         if (ret == 0) {
-            printk("ERROR: Mapping failed!\n");
+            // printk("ERROR: Mapping failed!\n");
             // 这里可能就是一个死循环或者错误返回
         }        
         // [修改核心] 既然 helper 映射的是 2MB，我们就跳过 2MB

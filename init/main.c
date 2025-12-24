@@ -287,6 +287,8 @@ static void init_syscall(void)
     // P5 新增
     syscall[SYSCALL_NET_SEND] = (long (*)())do_net_send;
     syscall[SYSCALL_NET_RECV] = (long (*)())do_net_recv;
+    syscall[SYSCALL_NET_RECV_STREAM] = (long (*)())do_net_recv_stream;
+    syscall[SYSCALL_NET_RESET] = (long (*)())init_reliable_layer;
 }
 
 /* [P4-Task1] 新增: 取消临时映射的辅助函数 */

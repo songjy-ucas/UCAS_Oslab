@@ -64,9 +64,11 @@ int sys_pipe_open(const char *name);
 long sys_pipe_give_pages(int pipe_idx, void *src, size_t length);
 long sys_pipe_take_pages(int pipe_idx, void *dst, size_t length);
 
-/* TODO: [P5-task5] net send and recv */
+/* TODO: [P5-task1&5] net send and recv */
 int sys_net_send(void *txpacket, int length);
 int sys_net_recv(void *rxbuffer, int pkt_num, int *pkt_lens);
+int sys_net_recv_stream(void *buffer, int *nbytes);
+void sys_net_reset();
 /************************************************************/
 
 

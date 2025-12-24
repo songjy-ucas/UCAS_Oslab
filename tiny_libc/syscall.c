@@ -332,3 +332,15 @@ int sys_net_recv(void *rxbuffer, int pkt_num, int *pkt_lens)
     invoke_syscall(SYSCALL_NET_RECV, (long)rxbuffer, (long)pkt_num, (long)pkt_lens, 0, 0);
     return 0;
 }
+
+int sys_net_recv_stream(void *buffer, int *nbytes){
+    invoke_syscall(SYSCALL_NET_RECV_STREAM, (long)buffer, (long)nbytes, 0, 0, 0);
+    return 0;
+}
+
+
+void sys_net_reset(void)
+{
+    invoke_syscall(SYSCALL_NET_RESET, 0, 0, 0, 0, 0);
+}
+

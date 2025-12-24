@@ -57,14 +57,14 @@ int main(int argc, char *argv[])
 
             // 4. Print Status (every ~10KB to avoid spamming I/O)
             if (iteration++ % 10 == 0) {
+                // Move cursor to the status line (line 2)
                 sys_move_cursor(0, print_location + 1);
-                // Clear the line with spaces
-                printf("                                                               \n"); 
-                printf("[RECV STREAM] Total: %d bytes | Checksum: 0x%04x | Last Chunk: %d\n", 
+                // Print status, padding with spaces to clear any previous, longer text
+                printf("[RECV STREAM] Total: %d bytes | Checksum: 0x%04x | Last Chunk: %d      \n",
                        total_bytes, checksum, nbytes);
 
-                // Print a snippet of the data (optional)
-                sys_move_cursor(0, print_location + 2);
+                // The previous printf automatically moves the cursor to the next line (line 3).
+                // Print a snippet of the data, again padding with spaces to clear the line.
                 printf("Data: ");
                 for(int i=0; i < (nbytes > 10 ? 10 : nbytes); i++) {
                     // Print as char if printable, else hex
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
                     if (c >= 32 && c <= 126) printf("%c", c);
                     else printf(".");
                 }
-                printf("...   \n");
+                printf("...                                                                  \n");
             }
         } else {
             // Should theoretically block, but if it returns 0 unexpectedly:

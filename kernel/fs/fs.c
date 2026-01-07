@@ -1134,6 +1134,10 @@ int do_rm(char *path)
     }
     if (!found) return -1;
 
+    if (dcache_enable) {
+        dcache_del(parent_ino, name);
+    }
+
     /* 2. 删除目录项：将最后一项移动到被删除项的位置（覆盖），避免中间出现空洞 */
     uint32_t last_idx = (num_dentries - 1) % per_block;
     uint32_t last_lb = (num_dentries - 1) / per_block;

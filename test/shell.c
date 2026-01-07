@@ -143,6 +143,118 @@ void exec_free(int argc, char *argv[])
     }
 }
 
+// File System Commands
+void exec_mkfs(int argc, char *argv[]) {
+    sys_fs_mkfs();
+}
+
+void exec_statfs(int argc, char *argv[]) {
+    sys_fs_statfs();
+}
+
+void exec_cd(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: cd <path>\n");
+        return;
+    }
+    if (sys_fs_cd(argv[1]) != 0) {
+        printf("Error: cd failed\n");
+    }
+}
+
+void exec_mkdir(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: mkdir <path>\n");
+        return;
+    }
+    if (sys_fs_mkdir(argv[1]) != 0) {
+        printf("Error: mkdir failed\n");
+    }
+}
+
+void exec_rmdir(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: rmdir <path>\n");
+        return;
+    }
+    if (sys_fs_rmdir(argv[1]) != 0) {
+        printf("Error: rmdir failed\n");
+    }
+}
+
+void exec_ls(int argc, char *argv[]) {
+    int option = 0;
+    char *path = NULL;
+    
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-l") == 0) {
+            option = 1;
+        } else {
+            path = argv[i];
+        }
+    }
+    sys_fs_ls(path, option);
+}
+
+void exec_touch(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: touch <file>\n");
+        return;
+    }
+    // O_RDWR (3) | O_CREAT logic handled in kernel if open mode allows
+    // Assuming 3 = O_RDWR. If kernel implements O_CREAT logic for open, this works.
+    // Guidebook says "open(char* name, int access)". 
+    // Usually access: O_RDONLY=1, O_WRONLY=2, O_RDWR=3.
+    // If not exist, open should create if writing is involved? 
+    // The student implementation of do_open creates file if not found and writable.
+    int fd = sys_fs_open(argv[1], 3); 
+    if (fd >= 0) {
+        sys_fs_close(fd);
+    } else {
+        printf("Error: Failed to touch %s\n", argv[1]);
+    }
+}
+
+void exec_cat(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: cat <file>\n");
+        return;
+    }
+    int fd = sys_fs_open(argv[1], 1); // O_RDONLY
+    if (fd < 0) {
+        printf("Error: Cannot open %s\n", argv[1]);
+        return;
+    }
+    char buf[129];
+    int n;
+    while ((n = sys_fs_read(fd, buf, 128)) > 0) {
+        buf[n] = '\0';
+        printf("%s", buf);
+    }
+    printf("\n");
+    sys_fs_close(fd);
+}
+
+void exec_ln(int argc, char *argv[]) {
+    if (argc < 3) {
+        printf("Usage: ln <src> <dst>\n");
+        return;
+    }
+    if (sys_fs_ln(argv[1], argv[2]) != 0) {
+        printf("Error: ln failed\n");
+    }
+}
+
+void exec_rm(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: rm <file>\n");
+        return;
+    }
+    if (sys_fs_rm(argv[1]) != 0) {
+        printf("Error: rm failed\n");
+    }
+}
+
 int main(void)
 {
     char cmd_buffer[CMD_MAX_LENGTH];
@@ -153,13 +265,6 @@ int main(void)
     sys_reflush();
     while (1)
     {
-        // TODO [P3-task1]: call syscall to read UART port
-        
-        // TODO [P3-task1]: parse input
-        // note: backspace maybe 8('\b') or 127(delete)
-
-        // TODO [P3-task1]: ps, exec, kill, clear 
-    
         // 独立的行输入循环
         
         // [HISTORY] 每次新循环开始时，重置当前历史指针到最新位置
@@ -343,7 +448,27 @@ int main(void)
                     }
                 }
             }
-        }        
+        } else if (strcmp(argv[0], "mkfs") == 0) {
+            exec_mkfs(argc, argv);
+        } else if (strcmp(argv[0], "statfs") == 0) {
+            exec_statfs(argc, argv);
+        } else if (strcmp(argv[0], "cd") == 0) {
+            exec_cd(argc, argv);
+        } else if (strcmp(argv[0], "mkdir") == 0) {
+            exec_mkdir(argc, argv);
+        } else if (strcmp(argv[0], "rmdir") == 0) {
+            exec_rmdir(argc, argv);
+        } else if (strcmp(argv[0], "ls") == 0) {
+            exec_ls(argc, argv);
+        } else if (strcmp(argv[0], "touch") == 0) {
+            exec_touch(argc, argv);
+        } else if (strcmp(argv[0], "cat") == 0) {
+            exec_cat(argc, argv);
+        } else if (strcmp(argv[0], "ln") == 0) {
+            exec_ln(argc, argv);
+        } else if (strcmp(argv[0], "rm") == 0) {
+            exec_rm(argc, argv);
+        }
         else {
             printf("Error: Unknown command '%s'\n", argv[0]);
         }

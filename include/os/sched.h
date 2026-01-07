@@ -100,6 +100,9 @@ typedef struct pcb
     /* [Task 3/4] current core id (用于ps显示) */
     int core_id;      // 记录当前或上一次运行该任务的核ID
 
+    /* Current Working Directory Inode Number */
+    uint32_t cwd_ino;
+
 } pcb_t;
 
 /* ready queue to run */

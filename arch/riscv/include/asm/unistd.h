@@ -59,5 +59,6 @@
 #define SYSCALL_FS_LN 77
 #define SYSCALL_FS_RM 78
 #define SYSCALL_FS_LSEEK 79
+#define SYSCALL_FS_SYNC 85
 
 #endif

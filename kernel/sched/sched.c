@@ -15,8 +15,8 @@
 
 pcb_t pcb[NUM_MAX_TASK];
 // 每个核心有自己的 pid0 栈
-const ptr_t pid0_stack_core0 = INIT_KERNEL_STACK + PAGE_SIZE;
-const ptr_t pid0_stack_core1 = INIT_KERNEL_STACK + 2 * PAGE_SIZE;
+const ptr_t pid0_stack_core0 = INIT_KERNEL_STACK + 8 * PAGE_SIZE;
+const ptr_t pid0_stack_core1 = INIT_KERNEL_STACK + 16 * PAGE_SIZE;
 
 pcb_t pid0_pcb[NR_CPUS];
 
@@ -210,7 +210,7 @@ pid_t do_exec(char *name, int argc, char *argv[])
     }
 
     // 4. 分配栈
-    new_pcb->kernel_stack_base = allocPage(1); // 内核栈 (内核虚地址)
+    new_pcb->kernel_stack_base = allocPage(8); // 内核栈 (内核虚地址)
     
     // [Task 1] 用户栈分配与映射
     // A-core USER_STACK_ADDR = 0xf00010000
@@ -219,7 +219,7 @@ pid_t do_exec(char *name, int argc, char *argv[])
     new_pcb->user_stack_base = user_stack_physical_kva; 
 
     // 计算栈顶指针
-    ptr_t kernel_stack_top = new_pcb->kernel_stack_base + PAGE_SIZE;
+    ptr_t kernel_stack_top = new_pcb->kernel_stack_base + 8 * PAGE_SIZE;
     // user_stack_kva_top: 用户栈顶对应的内核虚地址 (用于写参数)
     ptr_t user_stack_kva_top = user_stack_physical_kva + PAGE_SIZE;
 
@@ -261,14 +261,15 @@ pid_t do_exec(char *name, int argc, char *argv[])
     uintptr_t sp_offset = user_stack_kva_top - argv_ptr_base;
     ptr_t final_user_sp = USER_STACK_ADDR - sp_offset;
 
-    // 6. 初始化 PCB
+    // 初始化 PCB 基本信息
     new_pcb->pid = process_id++;
     new_pcb->parent_pid = current_running->pid;
     new_pcb->status = TASK_READY;
     new_pcb->cursor_x = 0;
     new_pcb->cursor_y = 0;
     new_pcb->mask = current_running->mask; 
-    list_init(&new_pcb->wait_list); 
+    new_pcb->cwd_ino = current_running->cwd_ino; // [P6-Task1] Inherit CWD from parent
+    list_init(&new_pcb->wait_list);
 
     // 7. 初始化寄存器上下文
     // SP 和 argv 都是用户虚地址

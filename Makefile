@@ -204,7 +204,7 @@ $(ELF_CREATEIMAGE): $(SRC_CREATEIMAGE)
 
 image: $(ELF_CREATEIMAGE) $(ELF_BOOT) $(ELF_MAIN) $(ELF_USER)
 	cd $(DIR_BUILD) && ./$(<F) --extended $(filter-out $(<F), $(^F))
-	# [Task 3 Add] Padding 64MB space for swap simulation at the end of image
-	dd if=/dev/zero of=$(DIR_BUILD)/image oflag=append conv=notrunc bs=256MB count=1
+	# Padding 1GB space for FS simulation at the end of image
+	dd if=/dev/zero of=$(ELF_IMAGE) oflag=append conv=notrunc bs=1M count=1024
 
 .PHONY: image

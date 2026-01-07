@@ -84,6 +84,7 @@ int sys_fs_close(int fd);
 int sys_fs_ln(char *src_path, char *dst_path);
 int sys_fs_rm(char *path);
 int sys_fs_lseek(int fd, int offset, int whence);
+void sys_fs_sync(void);
 /************************************************************/
 
 

@@ -345,10 +345,6 @@ void sys_net_reset(void)
 }
 
 
-// P6 新增
-
-// P6 新增
-
 int sys_fs_mkfs(void)
 {
     return invoke_syscall(SYSCALL_FS_MKFS, 0, 0, 0, 0, 0);
@@ -412,4 +408,9 @@ int sys_fs_rm(char *path)
 int sys_fs_lseek(int fd, int offset, int whence)
 {
     return invoke_syscall(SYSCALL_FS_LSEEK, (uintptr_t)fd, (uintptr_t)offset, (uintptr_t)whence, 0, 0);
+}
+
+void sys_fs_sync(void)
+{
+    invoke_syscall(SYSCALL_FS_SYNC, 0, 0, 0, 0, 0);
 }

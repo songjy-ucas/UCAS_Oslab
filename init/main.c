@@ -20,6 +20,7 @@
 #include <csr.h>
 #include <os/ioremap.h>
 #include <os/net.h>
+#include <os/fs.h>
 #include <e1000.h>
 #include <plic.h>
 
@@ -184,8 +185,8 @@ static void init_pcb(void)
     // =============================================================
     
     // 分配内核栈 (直接分配物理页，使用其内核虚地址)
-    pcb[pcb_idx].kernel_stack_base = allocPage(1);
-    ptr_t kernel_stack = pcb[pcb_idx].kernel_stack_base + PAGE_SIZE;
+    pcb[pcb_idx].kernel_stack_base = allocPage(8);
+    ptr_t kernel_stack = pcb[pcb_idx].kernel_stack_base + 8 * PAGE_SIZE;
 
     // 分配用户栈 (分配物理页，并映射到用户空间)
     // A-core USER_STACK_ADDR = 0xf00010000
@@ -202,6 +203,7 @@ static void init_pcb(void)
     pcb[pcb_idx].cursor_x = 0;
     pcb[pcb_idx].cursor_y = 0;
     pcb[pcb_idx].mask = 0x3; 
+    pcb[pcb_idx].cwd_ino = 1; // [P6-Task1] Set cwd to Root Inode (1)
     list_init(&pcb[pcb_idx].list);
     list_init(&pcb[pcb_idx].wait_list);
 
@@ -289,6 +291,25 @@ static void init_syscall(void)
     syscall[SYSCALL_NET_RECV] = (long (*)())do_net_recv;
     syscall[SYSCALL_NET_RECV_STREAM] = (long (*)())do_net_recv_stream;
     syscall[SYSCALL_NET_RESET] = (long (*)())init_reliable_layer;
+
+    // P6 新增
+    syscall[SYSCALL_FS_MKFS] = (long (*)())do_mkfs;
+    syscall[SYSCALL_FS_STATFS] = (long (*)())do_statfs;
+    syscall[SYSCALL_FS_CD] = (long (*)())do_cd;
+    syscall[SYSCALL_FS_MKDIR] = (long (*)())do_mkdir;
+    syscall[SYSCALL_FS_RMDIR] = (long (*)())do_rmdir;
+    syscall[SYSCALL_FS_LS] = (long (*)())do_ls;
+    // syscall[SYSCALL_FS_TOUCH] = (long (*)())do_touch;
+    // syscall[SYSCALL_FS_CAT] = (long (*)())do_cat;
+    syscall[SYSCALL_FS_OPEN] = (long (*)())do_open;
+    syscall[SYSCALL_FS_READ] = (long (*)())do_read;
+    syscall[SYSCALL_FS_WRITE] = (long (*)())do_write;
+    syscall[SYSCALL_FS_CLOSE] = (long (*)())do_close;
+    syscall[SYSCALL_FS_LN] = (long (*)())do_ln;
+    syscall[SYSCALL_FS_RM] = (long (*)())do_rm;
+    syscall[SYSCALL_FS_LSEEK] = (long (*)())do_lseek;
+    syscall[SYSCALL_FS_SYNC] = (long (*)())do_fs_sync;
+    
 }
 
 /* [P4-Task1] 新增: 取消临时映射的辅助函数 */
@@ -368,14 +389,14 @@ int main(/*int argc, char *argv[]*/)
         
         time_base = bios_read_fdt(TIMEBASE);
 
-        e1000 = (volatile uint8_t *)bios_read_fdt(ETHERNET_ADDR);
-        uint64_t plic_addr = bios_read_fdt(PLIC_ADDR);
-        uint32_t nr_irqs = (uint32_t)bios_read_fdt(NR_IRQS);
-        // printk("> [INIT] e1000: %lx, plic_addr: %lx, nr_irqs: %lx.\n", e1000, plic_addr, nr_irqs);
+        // e1000 = (volatile uint8_t *)bios_read_fdt(ETHERNET_ADDR);
+        // uint64_t plic_addr = bios_read_fdt(PLIC_ADDR);
+        // uint32_t nr_irqs = (uint32_t)bios_read_fdt(NR_IRQS);
+        // // printk("> [INIT] e1000: %lx, plic_addr: %lx, nr_irqs: %lx.\n", e1000, plic_addr, nr_irqs);
 
-        // IOremap
-        plic_addr = (uintptr_t)ioremap((uint64_t)plic_addr, 0x4000 * NORMAL_PAGE_SIZE);
-        e1000 = (uint8_t *)ioremap((uint64_t)e1000, 8 * NORMAL_PAGE_SIZE);
+        // // IOremap
+        // plic_addr = (uintptr_t)ioremap((uint64_t)plic_addr, 0x4000 * NORMAL_PAGE_SIZE);
+        // e1000 = (uint8_t *)ioremap((uint64_t)e1000, 8 * NORMAL_PAGE_SIZE);
 
         // init_pcb 内部现在使用 allocPage 
         // P5 task3 ---------------------- 这个位置要改！！！！！！要在ioremap之后！！！！！！
@@ -396,16 +417,18 @@ int main(/*int argc, char *argv[]*/)
         printk("> [INIT] Interrupt processing initialization succeeded.\n");
         init_syscall();
         printk("> [INIT] System call initialized successfully.\n");
+        init_fs(); // [P6-Task1] Init File System
+        printk("> [INIT] File System initialized successfully.\n");
         init_screen();
         printk("> [INIT] SCREEN initialization succeeded.\n");
 
         // TODO: [p5-task4] Init plic
-        plic_init(plic_addr, nr_irqs);
-        printk("> [INIT] PLIC initialized successfully. addr = 0x%lx, nr_irqs=0x%x\n", plic_addr, nr_irqs);
+        // plic_init(plic_addr, nr_irqs);
+        // printk("> [INIT] PLIC initialized successfully. addr = 0x%lx, nr_irqs=0x%x\n", plic_addr, nr_irqs);
 
         // Init network device(-_-)
-        e1000_init();
-        printk("> [INIT] E1000 device initialized successfully.\n");
+        // e1000_init();
+        // printk("> [INIT] E1000 device initialized successfully.\n");
 
         printk("> [INIT] CPU #%u has entered kernel with VM!\n",
             (unsigned int)get_current_cpu_id());

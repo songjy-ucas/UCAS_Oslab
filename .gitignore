@@ -1,3 +1,5 @@
 .vscode
 build
 *.txt
+.tmp_doc/
+.tmp_doc/

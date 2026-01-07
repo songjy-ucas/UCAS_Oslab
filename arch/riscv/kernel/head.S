@@ -7,7 +7,7 @@
 #include <csr.h>
 
 #define PAGE_SIZE 4096 // 4K
-#define INIT_KERNEL_STACK 0xffffffc050500000
+#define INIT_KERNEL_STACK 0xffffffc052000000
 .globl _edata
 .globl _end
 
@@ -43,7 +43,7 @@ bss_done:
 stack_init:
 
   li sp, INIT_KERNEL_STACK   // 0x50500000
-  li t0, PAGE_SIZE           // 4096
+  li t0, 32768           // 32KB
 
   
   csrr a0, mhartid           // 读取 hartid

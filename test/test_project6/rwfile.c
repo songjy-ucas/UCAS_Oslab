@@ -14,6 +14,9 @@ int main(void)
         sys_fs_write(fd, "hello world!\n", 13);
     }
 
+    // reset pointer to the beginning
+    sys_fs_lseek(fd, 0, SEEK_SET);
+
     // read
     for (int i = 0; i < 10; i++)
     {

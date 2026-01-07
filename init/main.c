@@ -417,8 +417,12 @@ int main(/*int argc, char *argv[]*/)
         printk("> [INIT] Interrupt processing initialization succeeded.\n");
         init_syscall();
         printk("> [INIT] System call initialized successfully.\n");
+
         init_fs(); // [P6-Task1] Init File System
+        // char *fs_daemon_argv[] = {"fs_daemon", NULL};
+        // pid_t wb_pid = do_exec("fs_daemon", 1, fs_daemon_argv);
         printk("> [INIT] File System initialized successfully.\n");
+
         init_screen();
         printk("> [INIT] SCREEN initialization succeeded.\n");
 

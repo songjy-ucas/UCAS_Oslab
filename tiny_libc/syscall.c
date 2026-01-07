@@ -344,3 +344,72 @@ void sys_net_reset(void)
     invoke_syscall(SYSCALL_NET_RESET, 0, 0, 0, 0, 0);
 }
 
+
+// P6 新增
+
+// P6 新增
+
+int sys_fs_mkfs(void)
+{
+    return invoke_syscall(SYSCALL_FS_MKFS, 0, 0, 0, 0, 0);
+}
+
+int sys_fs_statfs(void)
+{
+    return invoke_syscall(SYSCALL_FS_STATFS, 0, 0, 0, 0, 0);
+}
+
+int sys_fs_cd(char *path)
+{
+    return invoke_syscall(SYSCALL_FS_CD, (uintptr_t)path, 0, 0, 0, 0);
+}
+
+int sys_fs_mkdir(char *path)
+{
+    return invoke_syscall(SYSCALL_FS_MKDIR, (uintptr_t)path, 0, 0, 0, 0);
+}
+
+int sys_fs_rmdir(char *path)
+{
+    return invoke_syscall(SYSCALL_FS_RMDIR, (uintptr_t)path, 0, 0, 0, 0);
+}
+
+int sys_fs_ls(char *path, int option)
+{
+    return invoke_syscall(SYSCALL_FS_LS, (uintptr_t)path, (uintptr_t)option, 0, 0, 0);
+}
+
+int sys_fs_open(char *path, int mode)
+{
+    return invoke_syscall(SYSCALL_FS_OPEN, (uintptr_t)path, (uintptr_t)mode, 0, 0, 0);
+}
+
+int sys_fs_read(int fd, char *buff, int length)
+{
+    return invoke_syscall(SYSCALL_FS_READ, (uintptr_t)fd, (uintptr_t)buff, (uintptr_t)length, 0, 0);
+}
+
+int sys_fs_write(int fd, char *buff, int length)
+{
+    return invoke_syscall(SYSCALL_FS_WRITE, (uintptr_t)fd, (uintptr_t)buff, (uintptr_t)length, 0, 0);
+}
+
+int sys_fs_close(int fd)
+{
+    return invoke_syscall(SYSCALL_FS_CLOSE, (uintptr_t)fd, 0, 0, 0, 0);
+}
+
+int sys_fs_ln(char *src_path, char *dst_path)
+{
+    return invoke_syscall(SYSCALL_FS_LN, (uintptr_t)src_path, (uintptr_t)dst_path, 0, 0, 0);
+}
+
+int sys_fs_rm(char *path)
+{
+    return invoke_syscall(SYSCALL_FS_RM, (uintptr_t)path, 0, 0, 0, 0);
+}
+
+int sys_fs_lseek(int fd, int offset, int whence)
+{
+    return invoke_syscall(SYSCALL_FS_LSEEK, (uintptr_t)fd, (uintptr_t)offset, (uintptr_t)whence, 0, 0);
+}

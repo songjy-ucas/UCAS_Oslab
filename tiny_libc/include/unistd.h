@@ -71,19 +71,19 @@ int sys_net_recv_stream(void *buffer, int *nbytes);
 void sys_net_reset();
 
 /* file system operations */
-int sys_mkfs(void);
-int sys_statfs(void);
-int sys_cd(char *path);
-int sys_mkdir(char *path);
-int sys_rmdir(char *path);
-int sys_ls(char *path, int option);
-int sys_open(char *path, int mode);
-int sys_read(int fd, char *buff, int length);
-int sys_write(int fd, char *buff, int length);
-int sys_close(int fd);
-int sys_ln(char *src_path, char *dst_path);
-int sys_rm(char *path);
-int sys_lseek(int fd, int offset, int whence);
+int sys_fs_mkfs(void);
+int sys_fs_statfs(void);
+int sys_fs_cd(char *path);
+int sys_fs_mkdir(char *path);
+int sys_fs_rmdir(char *path);
+int sys_fs_ls(char *path, int option);
+int sys_fs_open(char *path, int mode);
+int sys_fs_read(int fd, char *buff, int length);
+int sys_fs_write(int fd, char *buff, int length);
+int sys_fs_close(int fd);
+int sys_fs_ln(char *src_path, char *dst_path);
+int sys_fs_rm(char *path);
+int sys_fs_lseek(int fd, int offset, int whence);
 /************************************************************/
 
 

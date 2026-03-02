@@ -724,8 +724,8 @@ int do_mkfs(void)
     sd_write_block(0, buf);
 
     // 初始化 inode 位图：保留 0 和 1
-    memset(buf, 0, BLOCK_SIZE);
-    buf[0] |= (1 << 0) | (1 << 1); 
+    memset(buf, 0, BLOCK_SIZE); // 全清零，表示全空闲
+    buf[0] |= (1 << 0) | (1 << 1); // 这里把前两位预占了(保留位和根目录)
     sd_write_block(imap_block, buf);
 
     // 初始化块位图：保留前两个块
@@ -813,8 +813,8 @@ int do_ls(char *path, int option)
                        target.nlinks, target.size, de[j].ino);
                 // 颜色和图标处理（蓝色显示目录）
                 if (target.mode == IM_DIR) bios_putstr(ANSI_FG_BLUE);
-                if (target.mode == IM_DIR) bios_putstr(" ");
-                else bios_putstr(" ");
+                // if (target.mode == IM_DIR) bios_putstr(" ");
+                // else bios_putstr(" ");
                 bios_putstr(de[j].name);
                 if (target.mode == IM_DIR) bios_putstr("/");
                 bios_putstr(ANSI_NONE);
@@ -822,8 +822,8 @@ int do_ls(char *path, int option)
                 printk("\n");
             } else { // 简单模式
                 if (target.mode == IM_DIR) bios_putstr(ANSI_FG_BLUE);
-                if (target.mode == IM_DIR) bios_putstr(" ");
-                else bios_putstr(" ");
+                // if (target.mode == IM_DIR) bios_putstr(" ");
+                // else bios_putstr(" ");
                 bios_putstr(de[j].name);
                 if (target.mode == IM_DIR) bios_putstr("/");
                 bios_putstr(ANSI_NONE);

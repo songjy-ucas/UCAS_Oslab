@@ -34,8 +34,8 @@
 
 /* 文件系统的数据结构 */
 typedef struct superblock {
-    uint32_t magic;
-    uint32_t fs_start_sector;
+    uint32_t magic; // 魔数,用来验证这是否是一个合法的、我们自己设计的文件系统
+    uint32_t fs_start_sector; // 文件系统起始扇区号
     uint32_t size_sectors;    /* 文件系统总扇区数 */
     
     uint32_t block_map_offset; /* 块位图相对于文件系统起始位置的偏移（块数） */
@@ -57,9 +57,9 @@ typedef struct superblock {
 } superblock_t;
 
 typedef struct dentry {
-    char name[MAX_FILE_NAME];
-    uint32_t ino;
-    uint32_t pad;
+    char name[MAX_FILE_NAME]; // 文件名 1.txt等
+    uint32_t ino; // inode 编号
+    uint32_t pad; // padding 对齐，使得结构体大小为 32 字节
 } dentry_t;
 
 /* Inode 中的直接指针数量 */
@@ -69,7 +69,7 @@ typedef struct dentry {
 
 typedef struct inode { 
     uint32_t ino;          /* Inode 号 */
-    uint32_t mode;         /* IM_REG 或 IM_DIR */
+    uint32_t mode;         /* IM_REG 或 IM_DIR  确定是文件还是目录 */ 
     uint32_t access;       /* 权限 (rwx) */
     uint32_t nlinks;       /* 硬链接计数 */
     uint32_t size;         /* 文件大小 (字节) */
@@ -84,7 +84,7 @@ typedef struct fdesc {
     uint32_t write_ptr;    /* 当前写偏移量 */
     uint32_t access;       /* 访问模式 (O_RDONLY 等) */
     uint32_t is_used;      /* 该描述符是否正在使用 */
-} fdesc_t;
+} fdesc_t; // 这个结构体不在磁盘中，在内存里，记录当前打开的文件信息
 
 /* 文件系统函数声明 */
 extern void init_fs(void);
